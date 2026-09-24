@@ -7,19 +7,14 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
+    <div className="h-screen w-full bg-[#111827] text-white flex flex-col font-sans overflow-hidden">
       {/* Navbar UI Component */}
       <Navbar />
 
       {/* Main Content Area */}
-      <main className="flex-grow p-8 flex flex-col items-center justify-center">
+      <main className="flex-grow flex flex-col overflow-y-auto">
         {children}
       </main>
-
-      {/* Footer (Optional) */}
-      <footer className="text-center p-4 text-gray-500 text-sm border-t border-gray-800">
-        &copy; {new Date().getFullYear()} Dont Fear Them
-      </footer>
     </div>
   );
 }
