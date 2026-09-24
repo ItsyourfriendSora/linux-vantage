@@ -1,33 +1,53 @@
+import { useState } from "react";
 import "./App.css";
 import Layout from "./main/Layout";
 
-import HeaderBanner from "./components/dashboard/HeaderBanner";
-import DashboardCard from "./components/dashboard/DashboardCard";
-import SystemTools from "./components/dashboard/SystemTools";
-import LegionEdgeCard from "./components/dashboard/LegionEdgeCard";
-import QuickSettingsCard from "./components/dashboard/QuickSettingsCard";
+import DonutCard from "./components/dashboard/DonutCard";
+import LineChartCard from "./components/dashboard/LineChartCard";
+import VennCard from "./components/dashboard/VennCard";
+import BarChartCard from "./components/dashboard/BarChartCard";
+import ListCard from "./components/dashboard/ListCard";
+
+import Processes from "./Processes/Processes";
 
 function App() {
+  const [activeTab, setActiveTab] = useState('Performance');
+
   return (
-    <Layout>
-      <HeaderBanner />
+    <Layout activeTab={activeTab} onTabChange={setActiveTab}>
       
-      {/* Dashboard Content Grid */}
-      <div className="p-8 flex gap-8">
-        
-        {/* Left Column */}
-        <div className="flex-1 flex flex-col">
-          <DashboardCard />
-          <SystemTools />
+      {activeTab === 'Performance' && (
+        <div className="p-8 w-full max-w-[1600px] mx-auto h-full flex flex-col">
+          <div className="grid grid-cols-3 gap-6 flex-1">
+            <div className="col-span-2 flex flex-col gap-6">
+              <div className="grid grid-cols-2 gap-6">
+                <DonutCard title="CPU Usage" value={70} color="#3b82f6" label="Core i7" />
+                <DonutCard title="GPU Load" value={8} color="#eab308" label="RTX 4060" />
+              </div>
+              <LineChartCard />
+              <div className="grid grid-cols-2 gap-6">
+                <VennCard />
+                <BarChartCard />
+              </div>
+            </div>
+            <div className="col-span-1">
+               <ListCard />
+            </div>
+          </div>
         </div>
-        
-        {/* Right Column */}
-        <div className="w-80 flex flex-col">
-          <LegionEdgeCard />
-          <QuickSettingsCard />
+      )}
+
+      {activeTab === 'Processes' && (
+        <Processes />
+      )}
+
+      {/* Placeholder for other tabs */}
+      {activeTab !== 'Performance' && activeTab !== 'Processes' && (
+        <div className="p-8 w-full h-full flex items-center justify-center text-gray-500">
+           {activeTab} content goes here...
         </div>
-        
-      </div>
+      )}
+      
     </Layout>
   );
 }
