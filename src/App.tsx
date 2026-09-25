@@ -9,14 +9,15 @@ import BarChartCard from "./components/dashboard/BarChartCard";
 import ListCard from "./components/dashboard/ListCard";
 
 import Processes from "./Processes/Processes";
+import Performance from "./Performance/Performance";
 
 function App() {
-  const [activeTab, setActiveTab] = useState('Performance');
+  const [activeTab, setActiveTab] = useState('Dashboard'); // Default to Dashboard now
 
   return (
     <Layout activeTab={activeTab} onTabChange={setActiveTab}>
       
-      {activeTab === 'Performance' && (
+      {activeTab === 'Dashboard' && (
         <div className="p-8 w-full max-w-[1600px] mx-auto h-full flex flex-col">
           <div className="grid grid-cols-3 gap-6 flex-1">
             <div className="col-span-2 flex flex-col gap-6">
@@ -41,8 +42,12 @@ function App() {
         <Processes />
       )}
 
+      {activeTab === 'Performance' && (
+        <Performance />
+      )}
+
       {/* Placeholder for other tabs */}
-      {activeTab !== 'Performance' && activeTab !== 'Processes' && (
+      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && (
         <div className="p-8 w-full h-full flex items-center justify-center text-gray-500">
            {activeTab} content goes here...
         </div>

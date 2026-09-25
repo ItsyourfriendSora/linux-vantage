@@ -5,7 +5,8 @@ interface SidebarProps {
 
 export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   const menuItems = [
-    { name: 'Processes', icon: <rect x="3" y="3" width="7" height="7" rx="1" />, icon2: <rect x="14" y="3" width="7" height="7" rx="1" />, icon3: <rect x="14" y="14" width="7" height="7" rx="1" />, icon4: <rect x="3" y="14" width="7" height="7" rx="1" /> },
+    { name: 'Dashboard', icon: <rect x="3" y="3" width="7" height="7" rx="1" />, icon2: <rect x="14" y="3" width="7" height="7" rx="1" />, icon3: <rect x="14" y="14" width="7" height="7" rx="1" />, icon4: <rect x="3" y="14" width="7" height="7" rx="1" /> },
+    { name: 'Processes', icon: <circle cx="12" cy="12" r="10" />, icon2: <polyline points="12 6 12 12 16 14" /> },
     { name: 'Performance', icon: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /> },
     { name: 'App history', icon: <circle cx="12" cy="12" r="10" />, icon2: <polyline points="12 6 12 12 16 14" /> },
     { name: 'Startup apps', icon: <path d="M12 2v20" />, icon2: <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /> },
