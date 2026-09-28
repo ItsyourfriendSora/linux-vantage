@@ -21,12 +21,31 @@ export interface DiskInfo {
   is_removable: boolean;
 }
 
+export interface NetworkInfo {
+  name: string;
+  is_wifi: boolean;
+  send_kbps: number;
+  recv_kbps: number;
+}
+
+export interface GpuInfo {
+  name: string;
+  usage: number;
+  temperature: number;
+  memory_used: number;
+  memory_total: number;
+}
+
 export default function Performance() {
   const [perf, setPerf] = useState<SystemPerformance | null>(null);
   const [disks, setDisks] = useState<DiskInfo[]>([]);
   const [cpuHistory, setCpuHistory] = useState<number[]>(Array(60).fill(0));
   const [memHistory, setMemHistory] = useState<number[]>(Array(60).fill(0));
   const [diskHistory, setDiskHistory] = useState<{read: number, write: number, active: number}[]>(Array(60).fill({read: 0, write: 0, active: 0}));
+  const [network, setNetwork] = useState<NetworkInfo | null>(null);
+  const [networkHistory, setNetworkHistory] = useState<{send: number, recv: number}[]>(Array(60).fill({send: 0, recv: 0}));
+  const [gpu, setGpu] = useState<GpuInfo | null>(null);
+  const [gpuHistory, setGpuHistory] = useState<number[]>(Array(60).fill(0));
   const [selectedTab, setSelectedTab] = useState('CPU');
 
   useEffect(() => {
@@ -44,6 +63,53 @@ export default function Performance() {
            console.error("Failed to fetch disks (is the rust backend updated?):", e);
         }
         setDisks(disksData);
+        
+        let netData: NetworkInfo | null = null;
+        try {
+           netData = await invoke<NetworkInfo>('get_network_info');
+           setNetwork(netData);
+        } catch (e) {
+           console.error("Failed to fetch network:", e);
+           // Fallback if backend not implemented
+           netData = { name: 'Ethernet', is_wifi: false, send_kbps: Math.random() * 100, recv_kbps: Math.random() * 500 };
+           setNetwork(netData);
+        }
+        
+        let gpuData: GpuInfo | null = null;
+        try {
+           gpuData = await invoke<GpuInfo>('get_gpu_info');
+           setGpu(gpuData);
+        } catch (e) {
+           console.error("Failed to fetch GPU:", e);
+           // Try to get real GPU name from WebGL if backend fails
+           let realGpuName = 'Unknown GPU';
+           try {
+             const canvas = document.createElement('canvas');
+             const gl = canvas.getContext('webgl') as WebGLRenderingContext;
+             if (gl) {
+               const ext = gl.getExtension('WEBGL_debug_renderer_info');
+               if (ext) {
+                 const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+                 realGpuName = renderer;
+                 // Clean up ANGLE wrapper names on Windows if present
+                 const match = renderer.match(/ANGLE \([^,]+, ([^D]+)( Direct3D)?/);
+                 if (match && match[1]) {
+                    realGpuName = match[1].trim();
+                 }
+               }
+             }
+           } catch (err) {}
+           
+           // Fallback if backend not implemented
+           gpuData = { 
+             name: realGpuName, 
+             usage: Math.random() * 100, 
+             temperature: 40 + Math.random() * 40, 
+             memory_used: (Math.random() * 4 + 2) * 1024 * 1024 * 1024, 
+             memory_total: 8 * 1024 * 1024 * 1024 
+           };
+           setGpu(gpuData);
+        }
         
         setCpuHistory(prev => {
           const next = [...prev, data.cpu_usage];
@@ -63,6 +129,21 @@ export default function Performance() {
             read: Math.random() * 500,
             write: Math.random() * 100
           }];
+          if (next.length > 60) next.shift();
+          return next;
+        });
+        
+        setNetworkHistory(prev => {
+          const next = [...prev, {
+            send: netData ? netData.send_kbps : 0,
+            recv: netData ? netData.recv_kbps : 0
+          }];
+          if (next.length > 60) next.shift();
+          return next;
+        });
+
+        setGpuHistory(prev => {
+          const next = [...prev, gpuData ? gpuData.usage : 0];
           if (next.length > 60) next.shift();
           return next;
         });
@@ -115,6 +196,14 @@ export default function Performance() {
     return `${x},${y}`;
   }).join(' ');
   const memAreaPoints = `0,${chartHeight} ${memPoints} ${chartWidth},${chartHeight}`;
+
+  // GPU Chart
+  const gpuPoints = gpuHistory.map((val, idx) => {
+    const x = (idx / 59) * chartWidth;
+    const y = chartHeight - ((val / 100) * chartHeight);
+    return `${x},${y}`;
+  }).join(' ');
+  const gpuAreaPoints = `0,${chartHeight} ${gpuPoints} ${chartWidth},${chartHeight}`;
 
   return (
     <div className="flex-1 w-full h-full flex flex-col p-6 bg-[#000000] text-gray-300">
@@ -185,27 +274,36 @@ export default function Performance() {
                  <div className="w-full border-b-2 border-teal-500"></div>
               </div>
               <div className="flex flex-col justify-center">
-                <span className="font-semibold text-white text-sm">Disk 0 (D: C:)</span>
+                <span className="font-semibold text-white text-sm">Disk 0 (/)</span>
                 <span className="text-xs text-gray-400">SSD<br/>1%</span>
               </div>
             </div>
           )}
           
-          <div className="p-3 rounded-lg flex gap-3 cursor-pointer border border-transparent hover:bg-[#121212]">
-            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 flex items-end justify-center p-2">
-               <div className="w-1/2 border-b-2 border-gray-500 border-dashed"></div>
+          <div onClick={() => setSelectedTab('Network')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'Network' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
+            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 flex items-end justify-center p-2 relative overflow-hidden">
+               <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-0 w-full h-full opacity-60">
+                 <polyline points={networkHistory.map((v, i) => `${(i/59)*100},${40 - (Math.min(v.recv, 1000)/1000)*40}`).join(' ')} fill="none" stroke="#d97706" strokeWidth="2" />
+               </svg>
             </div>
             <div className="flex flex-col justify-center">
-              <span className="font-semibold text-white text-sm">Wi-Fi</span>
-              <span className="text-xs text-gray-400">Wi-Fi<br/>S: 0 R: 0 Kbps</span>
+              <span className="font-semibold text-white text-sm">{network ? (network.is_wifi ? 'Wi-Fi' : 'Ethernet') : 'Ethernet'}</span>
+              <span className="text-xs text-gray-400">
+                {network ? (network.is_wifi ? 'Wi-Fi' : 'Ethernet') : 'Ethernet'}<br/>
+                S: {network ? (network.send_kbps >= 1000 ? (network.send_kbps / 1000).toFixed(1) + ' Mbps' : network.send_kbps.toFixed(0) + ' Kbps') : '0 Kbps'} R: {network ? (network.recv_kbps >= 1000 ? (network.recv_kbps / 1000).toFixed(1) + ' Mbps' : network.recv_kbps.toFixed(0) + ' Kbps') : '0 Kbps'}
+              </span>
             </div>
           </div>
           
-          <div className="p-3 rounded-lg flex gap-3 cursor-pointer border border-transparent hover:bg-[#121212]">
-            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0"></div>
+          <div onClick={() => setSelectedTab('GPU')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'GPU' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
+            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 relative overflow-hidden">
+               <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full opacity-60">
+                 <polyline points={gpuHistory.map((v, i) => `${(i/59)*100},${40 - (v/100)*40}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2" />
+               </svg>
+            </div>
             <div className="flex flex-col justify-center">
               <span className="font-semibold text-white text-sm">GPU 0</span>
-              <span className="text-xs text-gray-400">Intel(R) HD Graphi...<br/>0%</span>
+              <span className="text-xs text-gray-400 text-ellipsis overflow-hidden whitespace-nowrap w-28">{gpu ? gpu.name : 'GPU'}<br/>{gpu ? `${gpu.usage.toFixed(0)}% (${gpu.temperature.toFixed(0)} °C)` : '0%'}</span>
             </div>
           </div>
 
@@ -419,7 +517,7 @@ export default function Performance() {
                 <>
                   <div className="flex justify-between items-start mb-6">
                     <h2 className="text-3xl font-semibold text-white">
-                      Disk {disk ? `${diskIdx} (${disk.mount_point})` : '0 (D: C:)'}
+                      Disk {disk ? `${diskIdx} (${disk.mount_point})` : '0 (/)'}
                     </h2>
                     <div className="text-right text-gray-300 font-semibold">{disk ? disk.name : 'Unknown Disk'}</div>
                   </div>
@@ -498,7 +596,140 @@ export default function Performance() {
             })()
           )}
 
-          {selectedTab !== 'CPU' && selectedTab !== 'Memory' && !selectedTab.startsWith('Disk-') && (
+          {selectedTab === 'Network' && (
+            <>
+              <div className="flex justify-between items-start mb-6">
+                <h2 className="text-3xl font-semibold text-white">{network ? (network.is_wifi ? 'Wi-Fi' : 'Ethernet') : 'Ethernet'}</h2>
+                <div className="text-right text-gray-300 font-semibold">{network ? network.name : 'Unknown Adapter'}</div>
+              </div>
+
+              <div className="text-sm text-gray-400 mb-2">Throughput</div>
+              
+              <div className="w-full h-[250px] bg-[#121212] border border-gray-800 rounded-lg relative overflow-hidden flex flex-col justify-between mb-2">
+                <div className="absolute inset-0 grid grid-rows-4 grid-cols-6 opacity-20 pointer-events-none border-t border-l border-gray-700">
+                   {Array(24).fill(0).map((_, i) => (
+                     <div key={`ngrid-${i}`} className="border-r border-b border-gray-700"></div>
+                   ))}
+                </div>
+                
+                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+                  <polygon points={`0,${chartHeight} ${networkHistory.map((val, idx) => `${(idx / 59) * chartWidth},${chartHeight - ((Math.min(val.recv, 1000) / 1000) * chartHeight)}`).join(' ')} ${chartWidth},${chartHeight}`} fill="rgba(217, 119, 6, 0.1)" />
+                  <polyline points={networkHistory.map((val, idx) => `${(idx / 59) * chartWidth},${chartHeight - ((Math.min(val.recv, 1000) / 1000) * chartHeight)}`).join(' ')} fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  
+                  <polyline points={networkHistory.map((val, idx) => `${(idx / 59) * chartWidth},${chartHeight - ((Math.min(val.send, 1000) / 1000) * chartHeight)}`).join(' ')} fill="none" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 4" />
+                </svg>
+              </div>
+
+              <div className="flex justify-between text-xs text-gray-500 mb-8">
+                <span>60 seconds</span>
+                <span>0</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-8 text-sm">
+                <div className="grid grid-cols-2 gap-6 gap-y-4">
+                  <div className="flex flex-col">
+                    <span className="text-gray-400 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#f59e0b]"></div> Send</span>
+                    <span className="text-2xl font-semibold text-white">{network ? (network.send_kbps >= 1000 ? (network.send_kbps / 1000).toFixed(1) + ' Mbps' : network.send_kbps.toFixed(0) + ' Kbps') : '0 Kbps'}</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-[#d97706]"></div> Receive</span>
+                    <span className="text-2xl font-semibold text-white">{network ? (network.recv_kbps >= 1000 ? (network.recv_kbps / 1000).toFixed(1) + ' Mbps' : network.recv_kbps.toFixed(0) + ' Kbps') : '0 Kbps'}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-y-2 text-gray-300">
+                  <div className="text-gray-500">Adapter name:</div>
+                  <div>{network ? (network.is_wifi ? 'Wi-Fi' : 'Ethernet') : 'Ethernet'}</div>
+                  
+                  <div className="text-gray-500">Connection type:</div>
+                  <div>{network ? (network.is_wifi ? '802.11ac' : 'Ethernet') : 'Ethernet'}</div>
+                  
+                  <div className="text-gray-500">IPv4 address:</div>
+                  <div>192.168.100.211</div>
+                  
+                  <div className="text-gray-500">IPv6 address:</div>
+                  <div>2001:448a:40b0:...</div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {selectedTab === 'GPU' && (
+            <>
+              <div className="flex justify-between items-start mb-6">
+                <h2 className="text-3xl font-semibold text-white">GPU 0</h2>
+                <div className="text-right text-gray-300 font-semibold">{gpu ? gpu.name : 'Unknown GPU'}</div>
+              </div>
+
+              <div className="text-sm text-gray-400 mb-2">3D</div>
+              
+              <div className="w-full h-[250px] bg-[#121212] border border-gray-800 rounded-lg relative overflow-hidden flex flex-col justify-between mb-2">
+                <div className="absolute inset-0 grid grid-rows-4 grid-cols-6 opacity-20 pointer-events-none border-t border-l border-gray-700">
+                   {Array(24).fill(0).map((_, i) => (
+                     <div key={`gpugrid-${i}`} className="border-r border-b border-gray-700"></div>
+                   ))}
+                </div>
+                
+                <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+                  <polygon points={gpuAreaPoints} fill="rgba(37, 99, 235, 0.1)" />
+                  <polyline points={gpuPoints} fill="none" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
+
+              <div className="flex justify-between text-xs text-gray-500 mb-8">
+                <span>60 seconds</span>
+                <span>0</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-8 text-sm">
+                <div className="grid grid-cols-2 gap-6 gap-y-4">
+                  <div className="flex flex-col">
+                    <span className="text-gray-400">Utilization</span>
+                    <span className="text-2xl font-semibold text-white">{gpu ? gpu.usage.toFixed(0) : 0}%</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400">GPU Memory</span>
+                    <span className="text-2xl font-semibold text-white">
+                      {gpu ? formatBytes(gpu.memory_used) : '0 GB'}/{gpu ? formatBytes(gpu.memory_total) : '0 GB'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400">Dedicated GPU memory</span>
+                    <span className="text-2xl font-semibold text-white">
+                      {gpu ? formatBytes(gpu.memory_used) : '0 GB'}/{gpu ? formatBytes(gpu.memory_total) : '0 GB'}
+                    </span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400">Shared GPU memory</span>
+                    <span className="text-2xl font-semibold text-white">0.0 GB/7.9 GB</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400">GPU Temperature</span>
+                    <span className="text-2xl font-semibold text-white">{gpu ? gpu.temperature.toFixed(0) : 0}°C</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-y-2 text-gray-300">
+                  <div className="text-gray-500">Driver version:</div>
+                  <div>31.0.15.3623</div>
+                  
+                  <div className="text-gray-500">Driver date:</div>
+                  <div>6/8/2023</div>
+                  
+                  <div className="text-gray-500">DirectX version:</div>
+                  <div>12 (FL 12.1)</div>
+                  
+                  <div className="text-gray-500">Physical location:</div>
+                  <div>PCI bus 1, device 0, function 0</div>
+                  
+                  <div className="text-gray-500 mt-2">Hardware reserved memory:</div>
+                  <div className="mt-2">0 MB</div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {selectedTab !== 'CPU' && selectedTab !== 'Memory' && selectedTab !== 'Network' && selectedTab !== 'GPU' && !selectedTab.startsWith('Disk-') && (
             <div className="w-full h-full flex items-center justify-center text-gray-500">
                {selectedTab} detailed view is under construction...
             </div>

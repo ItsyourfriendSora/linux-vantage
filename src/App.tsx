@@ -10,6 +10,11 @@ import ListCard from "./components/dashboard/ListCard";
 
 import Processes from "./Processes/Processes";
 import Performance from "./Performance/Performance";
+import { startHistoryPolling } from "./store/historyStore";
+import AppHistory from "./AppHistory/AppHistory";
+
+// Start polling history when the app initializes
+startHistoryPolling();
 
 function App() {
   const [activeTab, setActiveTab] = useState('Dashboard'); // Default to Dashboard now
@@ -46,8 +51,12 @@ function App() {
         <Performance />
       )}
 
+      {activeTab === 'App history' && (
+        <AppHistory />
+      )}
+
       {/* Placeholder for other tabs */}
-      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && (
+      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App history' && (
         <div className="p-8 w-full h-full flex items-center justify-center text-gray-500">
            {activeTab} content goes here...
         </div>
