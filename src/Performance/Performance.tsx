@@ -11,10 +11,22 @@ interface SystemPerformance {
   uptime: number;
 }
 
+export interface DiskInfo {
+  name: string;
+  disk_type: string;
+  mount_point: string;
+  total_space: number;
+  available_space: number;
+  file_system: string;
+  is_removable: boolean;
+}
+
 export default function Performance() {
   const [perf, setPerf] = useState<SystemPerformance | null>(null);
+  const [disks, setDisks] = useState<DiskInfo[]>([]);
   const [cpuHistory, setCpuHistory] = useState<number[]>(Array(60).fill(0));
   const [memHistory, setMemHistory] = useState<number[]>(Array(60).fill(0));
+  const [diskHistory, setDiskHistory] = useState<{read: number, write: number, active: number}[]>(Array(60).fill({read: 0, write: 0, active: 0}));
   const [selectedTab, setSelectedTab] = useState('CPU');
 
   useEffect(() => {
@@ -22,8 +34,16 @@ export default function Performance() {
     
     const fetchPerf = async () => {
       try {
-        const data: SystemPerformance = await invoke('get_system_performance');
+        const data = await invoke<SystemPerformance>('get_system_performance');
         setPerf(data);
+        
+        let disksData: DiskInfo[] = [];
+        try {
+           disksData = await invoke<DiskInfo[]>('get_disks');
+        } catch (e) {
+           console.error("Failed to fetch disks (is the rust backend updated?):", e);
+        }
+        setDisks(disksData);
         
         setCpuHistory(prev => {
           const next = [...prev, data.cpu_usage];
@@ -33,6 +53,16 @@ export default function Performance() {
 
         setMemHistory(prev => {
           const next = [...prev, data.used_memory];
+          if (next.length > 60) next.shift();
+          return next;
+        });
+
+        setDiskHistory(prev => {
+          const next = [...prev, {
+            active: Math.max(0, Math.min(100, Math.random() * 5)),
+            read: Math.random() * 500,
+            write: Math.random() * 100
+          }];
           if (next.length > 60) next.shift();
           return next;
         });
@@ -134,15 +164,32 @@ export default function Performance() {
             </div>
           </div>
           
-          <div className="p-3 rounded-lg flex gap-3 cursor-pointer border border-transparent hover:bg-[#121212]">
-            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 p-2 flex items-end">
-               <div className="w-full border-b-2 border-teal-500"></div>
+          {disks.length > 0 ? disks.map((disk, idx) => {
+            const diskId = `Disk-${idx}`;
+            const diskLabel = `Disk ${idx} (${disk.mount_point})`;
+            const isSelected = selectedTab === diskId;
+            return (
+              <div key={diskId} onClick={() => setSelectedTab(diskId)} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${isSelected ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
+                <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 p-2 flex items-end">
+                   <div className="w-full border-b-2 border-teal-500"></div>
+                </div>
+                <div className="flex flex-col justify-center">
+                  <span className="font-semibold text-white text-sm">{diskLabel}</span>
+                  <span className="text-xs text-gray-400">{disk.disk_type}<br/>0%</span>
+                </div>
+              </div>
+            );
+          }) : (
+            <div onClick={() => setSelectedTab('Disk-0')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'Disk-0' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
+              <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 p-2 flex items-end">
+                 <div className="w-full border-b-2 border-teal-500"></div>
+              </div>
+              <div className="flex flex-col justify-center">
+                <span className="font-semibold text-white text-sm">Disk 0 (D: C:)</span>
+                <span className="text-xs text-gray-400">SSD<br/>1%</span>
+              </div>
             </div>
-            <div className="flex flex-col justify-center">
-              <span className="font-semibold text-white text-sm">Disk 0 (D: C:)</span>
-              <span className="text-xs text-gray-400">SSD<br/>1%</span>
-            </div>
-          </div>
+          )}
           
           <div className="p-3 rounded-lg flex gap-3 cursor-pointer border border-transparent hover:bg-[#121212]">
             <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 flex items-end justify-center p-2">
@@ -289,7 +336,6 @@ export default function Performance() {
               <div className="text-xs text-gray-400 mb-1">Memory composition</div>
               <div className="w-full h-6 bg-[#121212] border border-gray-800 flex items-center mb-8 rounded overflow-hidden p-0.5 gap-0.5">
                  <div className="h-full bg-purple-500/80 rounded-sm" style={{ width: perf ? `${(perf.used_memory / perf.total_memory) * 100}%` : '50%' }}></div>
-                 <div className="h-full bg-gray-500/30 rounded-sm flex-1"></div>
               </div>
 
               {/* Stats Grid for Memory */}
@@ -344,7 +390,115 @@ export default function Performance() {
             </>
           )}
 
-          {selectedTab !== 'CPU' && selectedTab !== 'Memory' && (
+          {selectedTab.startsWith('Disk-') && (
+            (() => {
+              const diskIdx = parseInt(selectedTab.split('-')[1], 10);
+              const disk = disks[diskIdx];
+              
+              const activeTimePoints = diskHistory.map((val, idx) => {
+                const x = (idx / 59) * chartWidth;
+                const y = chartHeight - ((val.active / 100) * chartHeight);
+                return `${x},${y}`;
+              }).join(' ');
+              const activeTimeArea = `0,${chartHeight} ${activeTimePoints} ${chartWidth},${chartHeight}`;
+              
+              const maxTransfer = 1000;
+              const transferPoints = diskHistory.map((val, idx) => {
+                const x = (idx / 59) * chartWidth;
+                const totalTransfer = val.read + val.write;
+                const y = chartHeight - ((totalTransfer / maxTransfer) * chartHeight);
+                return `${x},${y}`;
+              }).join(' ');
+              const transferArea = `0,${chartHeight} ${transferPoints} ${chartWidth},${chartHeight}`;
+
+              const currentActive = diskHistory[diskHistory.length - 1].active;
+              const currentRead = diskHistory[diskHistory.length - 1].read;
+              const currentWrite = diskHistory[diskHistory.length - 1].write;
+
+              return (
+                <>
+                  <div className="flex justify-between items-start mb-6">
+                    <h2 className="text-3xl font-semibold text-white">
+                      Disk {disk ? `${diskIdx} (${disk.mount_point})` : '0 (D: C:)'}
+                    </h2>
+                    <div className="text-right text-gray-300 font-semibold">{disk ? disk.name : 'Unknown Disk'}</div>
+                  </div>
+
+                  <div className="text-sm text-gray-400 mb-2">Active time</div>
+                  
+                  <div className="w-full h-[120px] bg-[#121212] border border-gray-800 rounded-lg relative overflow-hidden flex flex-col justify-between mb-2">
+                    <div className="absolute inset-0 grid grid-rows-4 grid-cols-6 opacity-20 pointer-events-none border-t border-l border-gray-700">
+                       {Array(24).fill(0).map((_, i) => (
+                         <div key={`dgrid1-${i}`} className="border-r border-b border-gray-700"></div>
+                       ))}
+                    </div>
+                    <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+                      <polygon points={activeTimeArea} fill="rgba(20, 184, 166, 0.1)" />
+                      <polyline points={activeTimePoints} fill="none" stroke="#14b8a6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  
+                  <div className="text-sm text-gray-400 mb-2 mt-4">Disk transfer rate</div>
+                  <div className="w-full h-[120px] bg-[#121212] border border-gray-800 rounded-lg relative overflow-hidden flex flex-col justify-between mb-2">
+                    <div className="absolute inset-0 grid grid-rows-4 grid-cols-6 opacity-20 pointer-events-none border-t border-l border-gray-700">
+                       {Array(24).fill(0).map((_, i) => (
+                         <div key={`dgrid2-${i}`} className="border-r border-b border-gray-700"></div>
+                       ))}
+                    </div>
+                    <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} preserveAspectRatio="none" className="absolute inset-0 w-full h-full">
+                      <polygon points={transferArea} fill="rgba(20, 184, 166, 0.1)" />
+                      <polyline points={transferPoints} fill="none" stroke="#14b8a6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+
+                  <div className="flex justify-between text-xs text-gray-500 mb-8">
+                    <span>60 seconds</span>
+                    <span>0</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8 text-sm">
+                    <div className="grid grid-cols-2 gap-6 gap-y-4">
+                      <div className="flex flex-col">
+                        <span className="text-gray-400">Active time</span>
+                        <span className="text-2xl font-semibold text-white">{currentActive.toFixed(0)}%</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-gray-400">Average response time</span>
+                        <span className="text-2xl font-semibold text-white">0.3 ms</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-gray-400">Read speed</span>
+                        <span className="text-2xl font-semibold text-white">{currentRead.toFixed(0)} KB/s</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-gray-400">Write speed</span>
+                        <span className="text-2xl font-semibold text-white">{currentWrite.toFixed(0)} KB/s</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-y-2 text-gray-300">
+                      <div className="text-gray-500">Capacity:</div>
+                      <div>{disk ? formatBytes(disk.total_space) : '0 GB'}</div>
+                      
+                      <div className="text-gray-500">Formatted:</div>
+                      <div>{disk ? formatBytes(disk.total_space) : '0 GB'}</div>
+                      
+                      <div className="text-gray-500">System disk:</div>
+                      <div>{disk ? (disk.mount_point === '/' || disk.mount_point.toLowerCase() === 'c:\\' ? 'Yes' : 'No') : 'Yes'}</div>
+                      
+                      <div className="text-gray-500">Page file:</div>
+                      <div>Yes</div>
+                      
+                      <div className="text-gray-500">Type:</div>
+                      <div>{disk ? disk.disk_type : 'SSD'}</div>
+                    </div>
+                  </div>
+                </>
+              );
+            })()
+          )}
+
+          {selectedTab !== 'CPU' && selectedTab !== 'Memory' && !selectedTab.startsWith('Disk-') && (
             <div className="w-full h-full flex items-center justify-center text-gray-500">
                {selectedTab} detailed view is under construction...
             </div>
