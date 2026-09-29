@@ -51,12 +51,12 @@ function App() {
         <Performance />
       )}
 
-      {activeTab === 'App history' && (
+      {activeTab === 'App History' && (
         <AppHistory />
       )}
 
       {/* Placeholder for other tabs */}
-      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App history' && (
+      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App History' && (
         <div className="p-8 w-full h-full flex items-center justify-center text-gray-500">
            {activeTab} content goes here...
         </div>
