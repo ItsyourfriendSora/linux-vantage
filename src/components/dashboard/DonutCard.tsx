@@ -11,7 +11,7 @@ export default function DonutCard({ title, value, color, label }: DonutCardProps
   const strokeDashoffset = circumference - (value / 100) * circumference;
 
   return (
-    <div className="bg-[#121212] rounded-3xl p-6 shadow-sm border border-gray-900 flex flex-col h-72">
+    <div className="bg-[#121212] rounded-lg p-6 shadow-sm border border-gray-900 flex flex-col h-72">
       <div className="w-full text-left">
         <h3 className="text-white font-semibold text-lg">{title}</h3>
         <p className="text-xs text-gray-500 font-medium mt-1 truncate" title={label}>{label}</p>

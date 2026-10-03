@@ -13,6 +13,7 @@ import Processes from "./Processes/Processes";
 import Performance from "./Performance/Performance";
 import { startHistoryPolling } from "./store/historyStore";
 import AppHistory from "./AppHistory/AppHistory";
+import AntiVirus from "./AntiVirus/AntiVirus";
 
 // Start polling history when the app initializes
 startHistoryPolling();
@@ -104,8 +105,12 @@ function App() {
         <AppHistory />
       )}
 
+      {activeTab === 'Anti Virus' && (
+        <AntiVirus />
+      )}
+
       {/* Placeholder for other tabs */}
-      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App History' && (
+      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App History' && activeTab !== 'Anti Virus' && (
         <div className="p-8 w-full h-full flex items-center justify-center text-gray-500">
            {activeTab} content goes here...
         </div>

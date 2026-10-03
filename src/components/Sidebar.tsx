@@ -29,15 +29,11 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   return (
     <div className="w-[260px] h-screen bg-[#000000] border-r border-gray-900 flex flex-col justify-between py-4">
       <div>
-        {/* Hamburger Menu */}
-        <div className="px-6 mb-6">
-          <button className="text-white hover:bg-[#121212] p-2 rounded-md transition-colors">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="3" y1="12" x2="21" y2="12"></line>
-              <line x1="3" y1="6" x2="21" y2="6"></line>
-              <line x1="3" y1="18" x2="21" y2="18"></line>
-            </svg>
-          </button>
+        {/* Logo Text */}
+        <div className="px-6 mb-8 mt-2">
+          <h1 className="text-white text-2xl font-bold tracking-wide flex items-center">
+            Nexora
+          </h1>
         </div>
 
         {/* Menu Items */}

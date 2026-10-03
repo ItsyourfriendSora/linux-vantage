@@ -27,7 +27,7 @@ function ToggleRow({ label, hasSettings, active }: { label: string, hasSettings?
 
 export default function ListCard() {
   return (
-    <div className="bg-[#202736] rounded-3xl p-8 shadow-sm h-full flex flex-col">
+    <div className="bg-[#121212] rounded-lg p-8 shadow-sm border border-gray-900 h-full flex flex-col">
       <div className="flex justify-between items-start mb-6">
         <div>
           <h3 className="text-white font-bold text-lg mb-1">Thermal Mode</h3>

@@ -38,7 +38,7 @@ export default function LineChartCard({ data }: LineChartCardProps) {
   };
 
   return (
-    <div className="bg-[#121212] rounded-3xl p-6 shadow-sm border border-gray-900 w-full">
+    <div className="bg-[#121212] rounded-lg p-6 shadow-sm border border-gray-900 w-full">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-white font-semibold text-lg flex items-center gap-3">
           System Temperature

@@ -1,6 +1,6 @@
 export default function VennCard() {
   return (
-    <div className="bg-[#121212] rounded-3xl p-6 shadow-sm border border-gray-900 flex flex-col h-72">
+    <div className="bg-[#121212] rounded-lg p-6 shadow-sm border border-gray-900 flex flex-col h-72">
       <div className="flex justify-between items-center mb-6">
         <h3 className="text-white font-semibold text-lg">System Health</h3>
         <span className="text-gray-400 text-xs cursor-pointer">Show more ▾</span>
