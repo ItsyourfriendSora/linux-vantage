@@ -22,9 +22,10 @@ pub struct SystemPerformance {
     pub total_memory: u64,
     pub used_memory: u64,
     pub uptime: u64,
+    pub temperature: f32,
 }
 
-pub struct SysState(pub Mutex<System>, pub Mutex<sysinfo::Networks>);
+pub struct SysState(pub Mutex<System>, pub Mutex<sysinfo::Networks>, pub Mutex<sysinfo::Components>);
 
 #[tauri::command]
 fn get_processes(state: State<SysState>) -> Vec<ProcessInfo> {
@@ -66,6 +67,17 @@ fn get_system_performance(state: State<SysState>) -> SystemPerformance {
     let used_memory = sys.used_memory();
     let uptime = System::uptime();
     
+    let mut comps = state.2.lock().unwrap();
+    comps.refresh(true);
+    let mut temperature = 0.0_f32;
+    for comp in comps.iter() {
+        if let Some(temp) = comp.temperature() {
+            if temp > temperature {
+                temperature = temp;
+            }
+        }
+    }
+    
     SystemPerformance {
         cpu_usage,
         cpu_name,
@@ -74,6 +86,7 @@ fn get_system_performance(state: State<SysState>) -> SystemPerformance {
         total_memory,
         used_memory,
         uptime,
+        temperature,
     }
 }
 use std::process::Command;
@@ -168,9 +181,22 @@ fn get_gpu_info() -> GpuInfo {
         }
     }
 
+    let mut usage = 0.0;
+
+    // Attempt to get usage via nvidia-smi if available
+    if let Ok(output) = Command::new("nvidia-smi")
+        .args(&["--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"])
+        .output()
+    {
+        let output_str = String::from_utf8_lossy(&output.stdout);
+        if let Ok(parsed_usage) = output_str.trim().parse::<f64>() {
+            usage = parsed_usage;
+        }
+    }
+
     GpuInfo {
         name,
-        usage: 0.0,
+        usage,
         temperature: 45.0,
         memory_used: 1024.0 * 1024.0 * 1024.0,
         memory_total,
@@ -247,10 +273,11 @@ pub fn run() {
     let mut sys = System::new_all();
     sys.refresh_all();
     let nets = sysinfo::Networks::new_with_refreshed_list();
+    let comps = sysinfo::Components::new_with_refreshed_list();
     
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(SysState(Mutex::new(sys), Mutex::new(nets)))
+        .manage(SysState(Mutex::new(sys), Mutex::new(nets), Mutex::new(comps)))
         .invoke_handler(tauri::generate_handler![
             get_processes, 
             get_system_performance,

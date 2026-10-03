@@ -1,47 +1,57 @@
-export default function ListCard() {
-  const processes = [
-    { name: 'System Updater', type: 'Background', time: '12:00PM' },
-    { name: 'Game Optimization', type: 'Active', time: '12:00PM' },
-    { name: 'Network Monitor', type: 'Background', time: '12:00PM' },
-    { name: 'Thermal Control', type: 'Active', time: '12:00PM' },
-    { name: 'Audio Enhancement', type: 'Background', time: '12:00PM' },
-  ];
+import { useState } from 'react';
 
+function ToggleRow({ label, hasSettings, active }: { label: string, hasSettings?: boolean, active?: boolean }) {
+  const [isOn, setIsOn] = useState(active || false);
   return (
-    <div className="bg-[#121212] rounded-3xl p-8 shadow-sm border border-gray-900 h-full flex flex-col">
+    <div className="flex justify-between items-center py-5 border-b border-gray-700/30 last:border-0">
+      <span className="text-white font-medium text-sm">{label}</span>
+      <div className="flex items-center gap-4">
+        {hasSettings && (
+          <button className="text-gray-400 hover:text-white transition-colors">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+        )}
+        <button 
+          onClick={() => setIsOn(!isOn)}
+          className={`w-10 h-[22px] rounded-full relative transition-colors duration-200 ${isOn ? 'bg-blue-500' : 'bg-[#4b5563]'}`}
+        >
+          <div className={`w-[14px] h-[14px] bg-white rounded-full absolute top-[4px] transition-transform duration-200 ${isOn ? 'translate-x-[22px]' : 'translate-x-[4px]'}`} />
+        </button>
+      </div>
+    </div>
+  );
+}
 
-      <div className="flex-1 flex flex-col gap-6 overflow-y-auto">
-        {processes.map((proc, i) => (
-          <div key={i} className="flex items-center justify-between p-2 hover:bg-gray-800/50 rounded-xl transition-colors">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center text-gray-400">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                  <line x1="8" y1="21" x2="16" y2="21"></line>
-                  <line x1="12" y1="17" x2="12" y2="21"></line>
-                </svg>
-              </div>
-              <div>
-                <div className="text-white text-sm font-bold">{proc.name}</div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-[10px] text-gray-500 bg-gray-800 px-2 py-0.5 rounded">{proc.type}</span>
-                  <span className="text-[10px] text-gray-500 flex items-center gap-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                    {proc.time}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400 hover:text-white">
-                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-              </button>
-              <button className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400 hover:text-white">
-                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
-              </button>
-            </div>
-          </div>
-        ))}
+export default function ListCard() {
+  return (
+    <div className="bg-[#202736] rounded-3xl p-8 shadow-sm h-full flex flex-col">
+      <div className="flex justify-between items-start mb-6">
+        <div>
+          <h3 className="text-white font-bold text-lg mb-1">Thermal Mode</h3>
+          <p className="text-gray-400 text-sm">Balance</p>
+        </div>
+        <div className="w-9 h-9 rounded-full border border-gray-400 flex items-center justify-center text-gray-300">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a10 10 0 0 1 10 10"></path>
+            <circle cx="12" cy="12" r="2"></circle>
+            <line x1="12" y1="12" x2="16" y2="8"></line>
+            <path d="M7 12h.01"></path>
+            <path d="M17 12h.01"></path>
+            <path d="M12 17h.01"></path>
+            <path d="M12 7h.01"></path>
+          </svg>
+        </div>
+      </div>
+
+      <div className="flex-1 flex flex-col mt-2">
+        <ToggleRow label="Network Boost" hasSettings={true} active={true} />
+        <ToggleRow label="Auto Close" hasSettings={true} active={true} />
+        <ToggleRow label="Hybrid Mode" active={true} />
+        <ToggleRow label="Touchpad Lock" active={true} />
       </div>
     </div>
   );
