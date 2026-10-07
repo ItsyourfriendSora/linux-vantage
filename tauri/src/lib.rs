@@ -268,6 +268,23 @@ fn get_disks(state: State<SysState>) -> Vec<DiskInfo> {
     }]
 }
 
+#[tauri::command]
+fn set_keyboard_color(hex_color: String) -> Result<String, String> {
+    let color = hex_color.trim_start_matches('#');
+    match Command::new("openrgb").arg("-c").arg(color).output() {
+        Ok(output) => {
+            if output.status.success() {
+                Ok("Color applied successfully".to_string())
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        },
+        Err(e) => {
+            Err(format!("Failed to execute openrgb: {}", e))
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut sys = System::new_all();
@@ -283,7 +300,8 @@ pub fn run() {
             get_system_performance,
             get_gpu_info,
             get_network_info,
-            get_disks
+            get_disks,
+            set_keyboard_color
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

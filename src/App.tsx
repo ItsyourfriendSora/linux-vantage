@@ -14,6 +14,7 @@ import Performance from "./Performance/Performance";
 import { startHistoryPolling } from "./store/historyStore";
 import AppHistory from "./AppHistory/AppHistory";
 import AntiVirus from "./AntiVirus/AntiVirus";
+import BacklightKeyboard from "./BacklightKeyboard/BacklightKeyboard";
 
 // Start polling history when the app initializes
 startHistoryPolling();
@@ -109,8 +110,12 @@ function App() {
         <AntiVirus />
       )}
 
+      {activeTab === 'Backlight Keyboard' && (
+        <BacklightKeyboard />
+      )}
+
       {/* Placeholder for other tabs */}
-      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App History' && activeTab !== 'Anti Virus' && (
+      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App History' && activeTab !== 'Anti Virus' && activeTab !== 'Backlight Keyboard' && (
         <div className="p-8 w-full h-full flex items-center justify-center text-gray-500">
            {activeTab} content goes here...
         </div>
