@@ -287,10 +287,9 @@ fn set_keyboard_color(hex_color: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let mut sys = System::new_all();
-    sys.refresh_all();
-    let nets = sysinfo::Networks::new_with_refreshed_list();
-    let comps = sysinfo::Components::new_with_refreshed_list();
+    let sys = System::new();
+    let nets = sysinfo::Networks::new();
+    let comps = sysinfo::Components::new();
     
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
