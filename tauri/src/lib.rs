@@ -285,6 +285,33 @@ fn set_keyboard_color(hex_color: String) -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+fn minimize_window(window: tauri::Window) -> Result<(), String> {
+    window.minimize().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn toggle_maximize_window(window: tauri::Window) -> Result<bool, String> {
+    let is_max = window.is_maximized().map_err(|e| e.to_string())?;
+    if is_max {
+        window.unmaximize().map_err(|e| e.to_string())?;
+        Ok(false)
+    } else {
+        window.maximize().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+fn is_window_maximized(window: tauri::Window) -> Result<bool, String> {
+    window.is_maximized().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn close_window(window: tauri::Window) -> Result<(), String> {
+    window.close().map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let sys = System::new();
@@ -300,8 +327,13 @@ pub fn run() {
             get_gpu_info,
             get_network_info,
             get_disks,
-            set_keyboard_color
+            set_keyboard_color,
+            minimize_window,
+            toggle_maximize_window,
+            is_window_maximized,
+            close_window
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

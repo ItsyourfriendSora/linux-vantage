@@ -30,8 +30,8 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
     <div className="w-[260px] h-screen bg-[#000000] border-r border-gray-900 flex flex-col justify-between py-4">
       <div>
         {/* Logo Text */}
-        <div className="px-6 mb-8 mt-2">
-          <h1 className="text-white text-2xl font-bold tracking-wide flex items-center">
+        <div data-tauri-drag-region className="px-6 mb-8 mt-2 cursor-default select-none">
+          <h1 data-tauri-drag-region className="text-white text-2xl font-bold tracking-wide flex items-center">
             Nexora
           </h1>
         </div>
