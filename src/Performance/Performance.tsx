@@ -9,6 +9,7 @@ interface SystemPerformance {
   total_memory: number;
   used_memory: number;
   uptime: number;
+  temperature: number;
 }
 
 export interface DiskInfo {
@@ -235,7 +236,7 @@ export default function Performance() {
             </div>
             <div className="flex flex-col justify-center">
               <span className="font-semibold text-white text-sm">CPU</span>
-              <span className="text-xs text-gray-400">{perf ? perf.cpu_usage.toFixed(0) : 0}% {perf ? formatGHz(perf.cpu_frequency) : '0 GHz'}</span>
+              <span className="text-xs text-gray-400">{perf ? perf.cpu_usage.toFixed(0) : 0}% {perf ? formatGHz(perf.cpu_frequency) : '0 GHz'} ({perf ? `${perf.temperature.toFixed(0)}°C` : '0°C'})</span>
             </div>
           </div>
 
@@ -349,7 +350,10 @@ export default function Performance() {
                     <span className="text-gray-400">Speed</span>
                     <span className="text-2xl font-semibold text-white">{perf ? formatGHz(perf.cpu_frequency) : '0 GHz'}</span>
                   </div>
-                  <div></div>
+                  <div className="flex flex-col">
+                    <span className="text-gray-400">Temperature</span>
+                    <span className="text-2xl font-semibold text-white">{perf ? `${perf.temperature.toFixed(0)}°C` : '0°C'}</span>
+                  </div>
                   
                   <div className="flex flex-col">
                     <span className="text-gray-400">Processes</span>

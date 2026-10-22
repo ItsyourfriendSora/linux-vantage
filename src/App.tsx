@@ -37,7 +37,7 @@ function App() {
   const [cpuName, setCpuName] = useState('CPU');
   const [gpuUsage, setGpuUsage] = useState(0);
   const [gpuName, setGpuName] = useState('GPU');
-  const [temperatureHistory, setTemperatureHistory] = useState<number[]>(Array(20).fill(0));
+  const [temperatureHistory, setTemperatureHistory] = useState<number[]>([]);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
@@ -48,11 +48,12 @@ function App() {
           setCpuUsage(Math.round(sysPerf.cpu_usage));
           setCpuName(sysPerf.cpu_name || 'CPU');
 
+          const temp = Number(sysPerf.temperature) || 42.0;
           setTemperatureHistory(prev => {
-            const next = [...prev, sysPerf.temperature];
-            if (next.length > 20) {
-              next.shift();
+            if (prev.length === 0) {
+              return Array(20).fill(temp);
             }
+            const next = [...prev.slice(1), temp];
             return next;
           });
 

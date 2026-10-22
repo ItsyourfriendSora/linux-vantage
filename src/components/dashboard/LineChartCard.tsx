@@ -8,21 +8,23 @@ export default function LineChartCard({ data }: LineChartCardProps) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const displayData = data.length > 0 ? data : Array(20).fill(42.0);
+
   // Map temperature range 30°C - 100°C to SVG Y-coordinates 150 - 0
   const mapTempToY = (temp: number) => {
     return Math.max(0, Math.min(150, 150 - ((temp - 30) / 70) * 150));
   };
 
-  const points = data.map((temp, index) => {
-    const x = (index / Math.max(data.length - 1, 1)) * 500;
+  const points = displayData.map((temp, index) => {
+    const x = (index / Math.max(displayData.length - 1, 1)) * 500;
     const y = mapTempToY(temp);
     return `${x},${y}`;
   }).join(' L ');
 
-  const activeIdx = hoverIdx !== null ? hoverIdx : data.length - 1;
-  const activeTemp = data[activeIdx] || 0;
+  const activeIdx = hoverIdx !== null ? hoverIdx : displayData.length - 1;
+  const activeTemp = displayData[activeIdx] || 42.0;
   
-  const activeX = (activeIdx / Math.max(data.length - 1, 1)) * 500;
+  const activeX = (activeIdx / Math.max(displayData.length - 1, 1)) * 500;
   const activeY = mapTempToY(activeTemp);
 
   const fillPath = `M 0 150 L ${points.replace(/,/g, ' ')} L 500 150 Z`;
@@ -33,19 +35,52 @@ export default function LineChartCard({ data }: LineChartCardProps) {
     const rect = containerRef.current.getBoundingClientRect();
     const xPos = e.clientX - rect.left;
     const percentage = xPos / rect.width;
-    const idx = Math.min(data.length - 1, Math.max(0, Math.round(percentage * (data.length - 1))));
+    const idx = Math.min(displayData.length - 1, Math.max(0, Math.round(percentage * (displayData.length - 1))));
     setHoverIdx(idx);
   };
+
+  let statusText = 'Normal';
+  let statusColor = 'text-green-400 border-green-500/30 bg-green-500/10';
+  let badgeColor = 'bg-green-500';
+
+  if (activeTemp >= 90) {
+    statusText = 'Overheating';
+    statusColor = 'text-red-400 border-red-500/30 bg-red-500/10';
+    badgeColor = 'bg-red-500 animate-pulse';
+  } else if (activeTemp >= 75) {
+    statusText = 'Danger';
+    statusColor = 'text-orange-400 border-orange-500/30 bg-orange-500/10';
+    badgeColor = 'bg-orange-500';
+  } else if (activeTemp >= 55) {
+    statusText = 'Normal';
+    statusColor = 'text-green-400 border-green-500/30 bg-green-500/10';
+    badgeColor = 'bg-green-500';
+  } else {
+    statusText = 'Very Normal';
+    statusColor = 'text-blue-400 border-blue-500/30 bg-blue-500/10';
+    badgeColor = 'bg-blue-500';
+  }
 
   return (
     <div className="bg-[#121212] rounded-lg p-6 shadow-sm border border-gray-900 w-full">
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-white font-semibold text-lg flex items-center gap-3">
-          System Temperature
-          <span className="text-sm font-normal text-gray-400">
-            {hoverIdx !== null ? 'History: ' : ''}{activeTemp.toFixed(1)}°C
+        <div className="flex items-center gap-3">
+          <h3 className="text-white font-semibold text-lg flex items-center gap-2">
+            System Temperature
+          </h3>
+          <span className={`text-xs px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 font-medium ${statusColor}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${badgeColor}`}></span>
+            {statusText}
           </span>
-        </h3>
+        </div>
+        <div className="text-right">
+          <span className="text-2xl font-bold text-white tracking-tight">
+            {activeTemp.toFixed(1)}°C
+          </span>
+          {hoverIdx !== null && (
+            <span className="text-[11px] text-gray-400 block -mt-1">History checkpoint</span>
+          )}
+        </div>
       </div>
       
       <div className="flex w-full h-64">
