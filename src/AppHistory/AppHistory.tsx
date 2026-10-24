@@ -58,7 +58,7 @@ export default function AppHistory() {
           ) : (
             events.map((event) => (
               <div key={event.id} className="grid grid-cols-[3fr_1fr_2fr_1fr] border-b border-gray-800/50 hover:bg-[#1e1e1e] text-sm group">
-                <div className="p-2 border-r border-gray-800/50 flex items-center gap-3 overflow-hidden whitespace-nowrap text-ellipsis">
+                <div className="p-2 border-r border-gray-800/50 flex items-center gap-3 min-w-0">
                   <span className="text-lg flex-shrink-0">{getIcon(event.name)}</span>
                   <span className="text-gray-200 truncate" title={event.name}>{event.name}</span>
                 </div>

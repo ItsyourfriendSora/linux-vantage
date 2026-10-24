@@ -316,7 +316,7 @@ export default function Processes() {
                 : 'hover:bg-[#1a1a1a]'
             }`}
           >
-            <div className="p-2 border-r border-gray-800/50 flex items-center gap-2 overflow-hidden whitespace-nowrap text-ellipsis">
+            <div className="p-2 border-r border-gray-800/50 flex items-center gap-2 min-w-0">
               {/* Expand / Collapse Arrow Button */}
               {hasMultiple ? (
                 <button
@@ -410,7 +410,7 @@ export default function Processes() {
                         : 'hover:bg-[#1a1a1a]/90'
                     }`}
                   >
-                    <div className="p-2 border-r border-gray-800/40 flex items-center gap-2 pl-9 overflow-hidden whitespace-nowrap text-ellipsis">
+                    <div className="p-2 border-r border-gray-800/40 flex items-center gap-2 pl-9 min-w-0">
                       <span className="text-gray-600 text-xs font-mono flex-shrink-0 select-none">
                         {isLast ? '└─' : '├─'}
                       </span>

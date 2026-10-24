@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 
 interface SidebarProps {
   activeTab: string;
@@ -26,6 +26,45 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
     { name: 'Storage', icon: <line x1="22" y1="12" x2="2" y2="12" />, icon2: <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />, icon3: <line x1="6" y1="16" x2="6.01" y2="16" />, icon4: <line x1="10" y1="16" x2="10.01" y2="16" /> },
   ];
 
+  const INDICATOR_HEIGHT = 20; // 20px (h-5), aligns with content area
+  const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const [indicatorTop, setIndicatorTop] = useState<number>(0);
+  const [indicatorReady, setIndicatorReady] = useState<boolean>(false);
+  const [indicatorVisible, setIndicatorVisible] = useState<boolean>(false);
+
+  useLayoutEffect(() => {
+    const activeIndex = menuItems.findIndex((item) => item.name === activeTab);
+    if (activeIndex !== -1 && itemRefs.current[activeIndex]) {
+      const el = itemRefs.current[activeIndex];
+      const targetTop = el.offsetTop + (el.offsetHeight - INDICATOR_HEIGHT) / 2;
+      setIndicatorTop(targetTop);
+      setIndicatorVisible(true);
+    } else {
+      setIndicatorVisible(false);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    // Enable animation after initial placement so it doesn't fly in from top on load
+    const timer = setTimeout(() => {
+      setIndicatorReady(true);
+    }, 60);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const activeIndex = menuItems.findIndex((item) => item.name === activeTab);
+      if (activeIndex !== -1 && itemRefs.current[activeIndex]) {
+        const el = itemRefs.current[activeIndex];
+        setIndicatorTop(el.offsetTop + (el.offsetHeight - INDICATOR_HEIGHT) / 2);
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [activeTab]);
+
   return (
     <div className="w-[260px] h-screen bg-[#000000] border-r border-gray-900 flex flex-col justify-between py-4">
       <div>
@@ -37,19 +76,31 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
         </div>
 
         {/* Menu Items */}
-        <div className="flex flex-col gap-1 px-3">
+        <div className="flex flex-col gap-1 px-3 relative">
+          {/* Animated Blue Pill Indicator */}
+          <div
+            className={`absolute left-3 w-1 h-5 bg-blue-500 rounded-full z-10 pointer-events-none ${
+              indicatorVisible ? 'opacity-100' : 'opacity-0'
+            }`}
+            style={{
+              top: 0,
+              transform: `translateY(${indicatorTop}px)`,
+              transition: indicatorReady
+                ? 'transform 320ms cubic-bezier(0.16, 1, 0.3, 1) 90ms, opacity 200ms ease'
+                : 'opacity 200ms ease',
+            }}
+          />
+
           {menuItems.map((item, idx) => {
             const isActive = activeTab === item.name;
             return (
               <div 
                 key={idx} 
+                ref={(el) => { itemRefs.current[idx] = el; }}
                 onClick={() => onTabChange(item.name)}
                 className={`flex items-center gap-4 px-3 py-2.5 rounded-lg cursor-pointer transition-colors relative ${isActive ? 'bg-[#1e1e1e]' : 'hover:bg-[#121212]'}`}
               >
-                {isActive && (
-                  <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-4 bg-blue-500 rounded-full"></div>
-                )}
-                <div className={`${isActive ? 'text-blue-400' : 'text-gray-400'}`}>
+                <div className={`${isActive ? 'text-blue-400' : 'text-gray-400'} transition-colors duration-200`}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     {item.icon}
                     {item.icon2}
@@ -59,7 +110,7 @@ export default function Sidebar({ activeTab, onTabChange }: SidebarProps) {
                     {item.icon6}
                   </svg>
                 </div>
-                <span className={`text-sm ${isActive ? 'text-white' : 'text-gray-300'}`}>{item.name}</span>
+                <span className={`text-sm ${isActive ? 'text-white' : 'text-gray-300'} transition-colors duration-200`}>{item.name}</span>
               </div>
             );
           })}

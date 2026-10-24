@@ -212,11 +212,11 @@ export default function Performance() {
       <div className="flex justify-between items-center mb-6 flex-shrink-0">
         <h1 className="text-2xl font-semibold text-white">Performance</h1>
         <div className="flex items-center gap-4 text-sm">
-          <button className="flex items-center gap-2 hover:bg-[#1e1e1e] px-3 py-1.5 rounded-md transition-colors text-white">
+          <button className="flex items-center gap-2 hover:bg-[#1e1e1e] px-3 py-1.5 rounded-lg transition-colors text-white">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
             Run new task
           </button>
-          <button className="flex items-center gap-2 hover:bg-[#1e1e1e] px-2 py-1.5 rounded-md transition-colors text-white">
+          <button className="flex items-center gap-2 hover:bg-[#1e1e1e] px-2 py-1.5 rounded-lg transition-colors text-white">
             <span className="text-xl leading-none -mt-1">...</span>
           </button>
         </div>
@@ -229,7 +229,7 @@ export default function Performance() {
         <div className="w-64 flex flex-col gap-1 overflow-y-auto pr-2 min-h-0 overscroll-contain">
           
           <div onClick={() => setSelectedTab('CPU')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'CPU' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
-            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded relative overflow-hidden flex-shrink-0">
+            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded-md relative overflow-hidden flex-shrink-0">
                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full opacity-60">
                  <polyline points={cpuHistory.map((v, i) => `${(i/59)*100},${40 - (v/100)*40}`).join(' ')} fill="none" stroke="#3b82f6" strokeWidth="2" />
                </svg>
@@ -241,8 +241,8 @@ export default function Performance() {
           </div>
 
           <div onClick={() => setSelectedTab('Memory')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'Memory' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
-            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded relative flex-shrink-0 p-1">
-               <div className="w-full h-full border border-purple-500/30 flex items-end">
+            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded-md relative flex-shrink-0 p-1 overflow-hidden">
+               <div className="w-full h-full border border-purple-500/30 rounded flex items-end overflow-hidden">
                  <div className="w-full bg-purple-500/20 border-t border-purple-500" style={{ height: perf ? `${(perf.used_memory / perf.total_memory)*100}%` : '0%' }}></div>
                </div>
             </div>
@@ -260,7 +260,7 @@ export default function Performance() {
             const isSelected = selectedTab === diskId;
             return (
               <div key={diskId} onClick={() => setSelectedTab(diskId)} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${isSelected ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
-                <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 p-2 flex items-end">
+                <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded-md flex-shrink-0 p-2 flex items-end overflow-hidden">
                    <div className="w-full border-b-2 border-teal-500"></div>
                 </div>
                 <div className="flex flex-col justify-center">
@@ -271,7 +271,7 @@ export default function Performance() {
             );
           }) : (
             <div onClick={() => setSelectedTab('Disk-0')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'Disk-0' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
-              <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 p-2 flex items-end">
+              <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded-md flex-shrink-0 p-2 flex items-end overflow-hidden">
                  <div className="w-full border-b-2 border-teal-500"></div>
               </div>
               <div className="flex flex-col justify-center">
@@ -282,7 +282,7 @@ export default function Performance() {
           )}
           
           <div onClick={() => setSelectedTab('Network')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'Network' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
-            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 flex items-end justify-center p-2 relative overflow-hidden">
+            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded-md flex-shrink-0 flex items-end justify-center p-2 relative overflow-hidden">
                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="absolute inset-0 w-full h-full opacity-60">
                  <polyline points={networkHistory.map((v, i) => `${(i/59)*100},${40 - (Math.min(v.recv, 1000)/1000)*40}`).join(' ')} fill="none" stroke="#d97706" strokeWidth="2" />
                </svg>
@@ -297,7 +297,7 @@ export default function Performance() {
           </div>
           
           <div onClick={() => setSelectedTab('GPU')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'GPU' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
-            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded flex-shrink-0 relative overflow-hidden">
+            <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded-md flex-shrink-0 relative overflow-hidden">
                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full opacity-60">
                  <polyline points={gpuHistory.map((v, i) => `${(i/59)*100},${40 - (v/100)*40}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2" />
                </svg>
@@ -436,8 +436,8 @@ export default function Performance() {
 
               {/* Memory composition bar */}
               <div className="text-xs text-gray-400 mb-1">Memory composition</div>
-              <div className="w-full h-6 bg-[#121212] border border-gray-800 flex items-center mb-8 rounded overflow-hidden p-0.5 gap-0.5">
-                 <div className="h-full bg-purple-500/80 rounded-sm" style={{ width: perf ? `${(perf.used_memory / perf.total_memory) * 100}%` : '50%' }}></div>
+              <div className="w-full h-6 bg-[#121212] border border-gray-800 flex items-center mb-8 rounded-md overflow-hidden p-0.5 gap-0.5">
+                 <div className="h-full bg-purple-500/80 rounded" style={{ width: perf ? `${(perf.used_memory / perf.total_memory) * 100}%` : '50%' }}></div>
               </div>
 
               {/* Stats Grid for Memory */}

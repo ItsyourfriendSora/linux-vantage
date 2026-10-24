@@ -41,16 +41,6 @@ body {
   overscroll-behavior-y: none;
 }
 
-/* Ensure all scroll containers stop firmly at boundaries without bounce */
-*,
-*::before,
-*::after {
-  overscroll-behavior: none;
-  overscroll-behavior-y: none;
-  overscroll-behavior-x: none;
-}
-
-/* Custom dark scrollbar for scrollable sections */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
