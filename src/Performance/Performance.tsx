@@ -207,9 +207,9 @@ export default function Performance() {
   const gpuAreaPoints = `0,${chartHeight} ${gpuPoints} ${chartWidth},${chartHeight}`;
 
   return (
-    <div className="flex-1 w-full h-full flex flex-col p-6 bg-[#000000] text-gray-300">
+    <div className="flex-1 w-full h-full min-h-0 flex flex-col p-6 bg-[#000000] text-gray-300 overflow-hidden">
       {/* Top Toolbar */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-6 flex-shrink-0">
         <h1 className="text-2xl font-semibold text-white">Performance</h1>
         <div className="flex items-center gap-4 text-sm">
           <button className="flex items-center gap-2 hover:bg-[#1e1e1e] px-3 py-1.5 rounded-md transition-colors text-white">
@@ -223,10 +223,10 @@ export default function Performance() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex gap-4 overflow-hidden">
+      <div className="flex-1 min-h-0 flex gap-4 overflow-hidden">
         
         {/* Left Sidebar */}
-        <div className="w-64 flex flex-col gap-1 overflow-y-auto pr-2">
+        <div className="w-64 flex flex-col gap-1 overflow-y-auto pr-2 min-h-0 overscroll-contain">
           
           <div onClick={() => setSelectedTab('CPU')} className={`p-3 rounded-lg flex gap-3 cursor-pointer border ${selectedTab === 'CPU' ? 'bg-[#1e1e1e] border-gray-700' : 'border-transparent hover:bg-[#121212]'}`}>
             <div className="w-16 h-12 bg-[#121212] border border-gray-800 rounded relative overflow-hidden flex-shrink-0">
@@ -311,7 +311,7 @@ export default function Performance() {
         </div>
 
         {/* Right Pane */}
-        <div className="flex-1 bg-[#0a0a0a] rounded-lg border border-gray-800 p-6 flex flex-col relative overflow-y-auto">
+        <div className="flex-1 min-h-0 bg-[#0a0a0a] rounded-lg border border-gray-800 p-6 flex flex-col relative overflow-y-auto overscroll-contain">
           
           {selectedTab === 'CPU' && (
             <>

@@ -13,7 +13,7 @@ export default function Layout({ children, activeTab, onTabChange }: LayoutProps
 
   useEffect(() => {
     const handleResize = () => {
-      // Base design width is 1600px.
+      // Base design width is 1600px for Dashboard grid.
       const currentWidth = window.innerWidth;
       let newScale = currentWidth / 1600;
       
@@ -29,20 +29,30 @@ export default function Layout({ children, activeTab, onTabChange }: LayoutProps
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  const isDashboard = activeTab === 'Dashboard';
+
   return (
-    <div className="flex h-screen w-full bg-black text-white font-sans overflow-hidden">
+    <div className="flex fixed inset-0 h-full w-full bg-black text-white font-sans overflow-hidden select-none overscroll-none">
       {/* Sidebar on the Left */}
       <Sidebar activeTab={activeTab} onTabChange={onTabChange} />
 
       {/* Main Content Area (Right Side) */}
-      <div className="flex flex-col flex-1 h-full relative overflow-hidden bg-[#0A0A0A]">
+      <div className="flex flex-col flex-1 h-full min-h-0 relative overflow-hidden bg-[#0A0A0A] overscroll-none">
         <TopBar />
         
-        <main className="flex-grow flex flex-col overflow-y-auto overflow-x-hidden">
-          <div style={{ zoom: scale } as React.CSSProperties} className="flex flex-col w-full h-full min-h-max">
-            {children}
-          </div>
-        </main>
+        {isDashboard ? (
+          <main className="flex-grow flex flex-col overflow-y-auto overflow-x-hidden overscroll-none min-h-0">
+            <div style={{ zoom: scale } as React.CSSProperties} className="flex flex-col w-full h-full min-h-max overscroll-none">
+              {children}
+            </div>
+          </main>
+        ) : (
+          <main className="flex-grow flex flex-col overflow-hidden h-full min-h-0 overscroll-none">
+            <div className="flex flex-col w-full h-full min-h-0 overflow-hidden overscroll-none">
+              {children}
+            </div>
+          </main>
+        )}
       </div>
     </div>
   );

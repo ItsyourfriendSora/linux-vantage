@@ -27,14 +27,14 @@ export default function AppHistory() {
   };
 
   return (
-    <div className="flex-1 w-full h-full flex flex-col p-6 bg-[#000000] text-gray-300">
-      <div className="flex justify-between items-center mb-6">
+    <div className="flex-1 w-full h-full min-h-0 flex flex-col p-6 bg-[#000000] text-gray-300 overflow-hidden">
+      <div className="flex justify-between items-center mb-4 flex-shrink-0">
         <h1 className="text-2xl font-semibold text-white">App History</h1>
       </div>
 
-      <div className="flex-1 bg-[#121212] rounded-lg border border-gray-800 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 bg-[#121212] rounded-lg border border-gray-800 flex flex-col overflow-hidden">
         {/* Table Header */}
-        <div className="grid grid-cols-[3fr_1fr_2fr_1fr] border-b border-gray-800 text-xs font-semibold">
+        <div className="grid grid-cols-[3fr_1fr_2fr_1fr] border-b border-gray-800 text-xs font-semibold flex-shrink-0 bg-[#121212]">
           <div className="p-3 border-r border-gray-800 hover:bg-[#1e1e1e] cursor-pointer">
             Name
           </div>
@@ -50,7 +50,7 @@ export default function AppHistory() {
         </div>
 
         {/* Table Body */}
-        <div className="overflow-y-auto flex-1 pb-10">
+        <div className="overflow-y-auto flex-1 min-h-0 pb-10 overscroll-contain">
           {events.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
               No recent app history recorded yet. Open or close some apps to see them here!

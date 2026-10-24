@@ -10,6 +10,17 @@ interface ProcessInfo {
   disk_write: number;
 }
 
+interface ProcessGroup {
+  name: string;
+  key: string;
+  category: 'apps' | 'bg';
+  cpu: number;
+  memory: number;
+  disk_read: number;
+  disk_write: number;
+  processes: ProcessInfo[];
+}
+
 const BACKGROUND_PROCESS_NAMES = new Set([
   'svchost.exe', 'conhost.exe', 'dllhost.exe', 'system', 'services.exe', 'lsass.exe',
   'smss.exe', 'wininit.exe', 'csrss.exe', 'winlogon.exe', 'taskhostw.exe', 'sihost.exe',
@@ -31,6 +42,8 @@ const isBackgroundProcess = (name: string): boolean => {
 export default function Processes() {
   const [processes, setProcesses] = useState<ProcessInfo[]>([]);
   const [selectedPid, setSelectedPid] = useState<number | null>(null);
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState('');
   const [sortAsc, setSortAsc] = useState(true);
 
@@ -79,17 +92,6 @@ export default function Processes() {
 
     return () => clearInterval(interval);
   }, []);
-
-  const handleEndTask = async () => {
-    if (selectedPid === null) return;
-    try {
-      await invoke('kill_process', { pid: selectedPid });
-      setProcesses(prev => prev.filter(p => p.pid !== selectedPid));
-      setSelectedPid(null);
-    } catch (err) {
-      console.error("Failed to end task:", err);
-    }
-  };
 
   const getHeatmapColor = (num: number, type: 'cpu'|'mem'|'disk'|'net') => {
     if (num === 0) return 'transparent';
@@ -143,26 +145,139 @@ export default function Processes() {
     return processes.filter(p => p.name.toLowerCase().includes(q) || p.pid.toString().includes(q));
   }, [processes, search]);
 
-  // Stable grouping: category NEVER changes based on momentary CPU usage
-  const { apps, bgApps } = useMemo(() => {
-    const a: ProcessInfo[] = [];
-    const b: ProcessInfo[] = [];
+  // Group processes by executable name within each category (Apps vs Background)
+  const { appsGroups, bgAppsGroups, rawAppsCount, rawBgAppsCount } = useMemo(() => {
+    const appMap = new Map<string, ProcessGroup>();
+    const bgMap = new Map<string, ProcessGroup>();
+    let aCount = 0;
+    let bCount = 0;
 
     filtered.forEach(p => {
-      if (isBackgroundProcess(p.name)) {
-        b.push(p);
+      const isBg = isBackgroundProcess(p.name);
+      const targetMap = isBg ? bgMap : appMap;
+      const category = isBg ? 'bg' : 'apps';
+      const key = `${category}-${p.name.toLowerCase()}`;
+
+      if (isBg) {
+        bCount++;
       } else {
-        a.push(p);
+        aCount++;
       }
+
+      let group = targetMap.get(key);
+      if (!group) {
+        group = {
+          name: p.name,
+          key,
+          category,
+          cpu: 0,
+          memory: 0,
+          disk_read: 0,
+          disk_write: 0,
+          processes: [],
+        };
+        targetMap.set(key, group);
+      }
+
+      group.cpu += p.cpu;
+      group.memory += p.memory;
+      group.disk_read += p.disk_read;
+      group.disk_write += p.disk_write;
+      group.processes.push(p);
     });
 
-    if (!sortAsc) {
-      a.reverse();
-      b.reverse();
-    }
+    const sortFn = (a: ProcessGroup, b: ProcessGroup) => {
+      const cmp = a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      return sortAsc ? cmp : -cmp;
+    };
 
-    return { apps: a, bgApps: b };
+    const apps = Array.from(appMap.values()).sort(sortFn);
+    const bgApps = Array.from(bgMap.values()).sort(sortFn);
+
+    // Keep child processes inside each group sorted deterministically by PID
+    apps.forEach(g => g.processes.sort((a, b) => a.pid - b.pid));
+    bgApps.forEach(g => g.processes.sort((a, b) => a.pid - b.pid));
+
+    return {
+      appsGroups: apps,
+      bgAppsGroups: bgApps,
+      rawAppsCount: aCount,
+      rawBgAppsCount: bCount,
+    };
   }, [filtered, sortAsc]);
+
+  const toggleGroup = (key: string) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
+  const isGroupExpanded = (key: string) => {
+    if (search.trim().length > 0) return true; // auto-expand to show matches when searching
+    return expandedGroups.has(key);
+  };
+
+  const allMultiGroups = useMemo(() => {
+    return [...appsGroups, ...bgAppsGroups].filter(g => g.processes.length > 1);
+  }, [appsGroups, bgAppsGroups]);
+
+  const allExpanded = allMultiGroups.length > 0 && allMultiGroups.every(g => expandedGroups.has(g.key));
+
+  const toggleExpandAll = () => {
+    if (allExpanded) {
+      setExpandedGroups(new Set());
+    } else {
+      const next = new Set<string>();
+      allMultiGroups.forEach(g => next.add(g.key));
+      setExpandedGroups(next);
+    }
+  };
+
+  // Find currently selected group or process for action button
+  const currentSelectedGroup = useMemo(() => {
+    if (!selectedGroupKey) return null;
+    return [...appsGroups, ...bgAppsGroups].find(g => g.key === selectedGroupKey) || null;
+  }, [selectedGroupKey, appsGroups, bgAppsGroups]);
+
+  const handleEndTask = async () => {
+    if (selectedPid !== null) {
+      try {
+        await invoke('kill_process', { pid: selectedPid });
+        setProcesses(prev => prev.filter(p => p.pid !== selectedPid));
+        setSelectedPid(null);
+      } catch (err) {
+        console.error("Failed to end task:", err);
+      }
+    } else if (currentSelectedGroup !== null) {
+      const pids = currentSelectedGroup.processes.map(p => p.pid);
+      try {
+        await Promise.allSettled(pids.map(pid => invoke('kill_process', { pid })));
+        setProcesses(prev => prev.filter(p => !pids.includes(p.pid)));
+        setSelectedGroupKey(null);
+      } catch (err) {
+        console.error("Failed to end group processes:", err);
+      }
+    }
+  };
+
+  const getEndTaskButtonLabel = () => {
+    if (selectedPid !== null) {
+      return `End task (PID ${selectedPid})`;
+    }
+    if (currentSelectedGroup !== null) {
+      const count = currentSelectedGroup.processes.length;
+      return `End task (${currentSelectedGroup.name}${count > 1 ? ` · ${count}` : ''})`;
+    }
+    return 'End task';
+  };
+
+  const isEndTaskActive = selectedPid !== null || currentSelectedGroup !== null;
 
   const totalCpu = processes.reduce((acc, p) => acc + p.cpu, 0);
   const totalMem = processes.reduce((acc, p) => acc + p.memory, 0);
@@ -170,10 +285,171 @@ export default function Processes() {
   const totalCpuPercent = Math.min(100, Math.round(totalCpu / 8)); 
   const totalMemPercent = Math.min(100, Math.round((totalMem / (16 * 1024 * 1024 * 1024)) * 100));
 
+  const renderGroupRows = (groups: ProcessGroup[]) => {
+    return groups.map(group => {
+      const isExpanded = isGroupExpanded(group.key);
+      const hasMultiple = group.processes.length > 1;
+      const isGroupSelected = selectedGroupKey === group.key;
+
+      return (
+        <div key={group.key} className="flex flex-col">
+          {/* Main Parent / Group Row */}
+          <div 
+            onClick={() => {
+              if (hasMultiple) {
+                setSelectedGroupKey(prev => prev === group.key ? null : group.key);
+                setSelectedPid(null);
+              } else {
+                const singlePid = group.processes[0]?.pid;
+                setSelectedPid(prev => prev === singlePid ? null : singlePid);
+                setSelectedGroupKey(null);
+              }
+            }}
+            onDoubleClick={() => {
+              if (hasMultiple) {
+                toggleGroup(group.key);
+              }
+            }}
+            className={`grid grid-cols-[3fr_1fr_1fr_1fr_1fr_1fr] border-b border-gray-800/50 text-sm cursor-pointer transition-colors group select-none ${
+              isGroupSelected || (group.processes.length === 1 && selectedPid === group.processes[0]?.pid)
+                ? 'bg-blue-600/20 border-l-4 border-l-blue-500' 
+                : 'hover:bg-[#1a1a1a]'
+            }`}
+          >
+            <div className="p-2 border-r border-gray-800/50 flex items-center gap-2 overflow-hidden whitespace-nowrap text-ellipsis">
+              {/* Expand / Collapse Arrow Button */}
+              {hasMultiple ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleGroup(group.key);
+                  }}
+                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-700/60 text-gray-400 hover:text-white transition-colors flex-shrink-0"
+                  title={isExpanded ? "Collapse group" : "Expand group"}
+                >
+                  <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    width="13" 
+                    height="13" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2.5" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    className={`transition-transform duration-200 ${isExpanded ? 'rotate-90 text-blue-400' : 'rotate-0 text-gray-500 group-hover:text-gray-300'}`}
+                  >
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              ) : (
+                <span className="w-5 h-5 flex-shrink-0" />
+              )}
+
+              {/* Icon */}
+              <span className="text-lg flex-shrink-0">{getIcon(group.name)}</span>
+
+              {/* Group Name */}
+              <span 
+                className={`truncate font-medium ${
+                  isGroupSelected ? 'text-blue-300' : 'text-gray-200'
+                }`} 
+                title={group.name}
+              >
+                {group.name}
+              </span>
+
+              {/* Instance Count Badge or Single PID */}
+              {hasMultiple ? (
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-[#1e2330] text-blue-300 border border-blue-500/30 flex-shrink-0 ml-1">
+                  {group.processes.length}
+                </span>
+              ) : (
+                <span className="text-[10px] text-gray-600 ml-1 flex-shrink-0">
+                  PID {group.processes[0]?.pid}
+                </span>
+              )}
+            </div>
+
+            <div className="p-2 border-r border-gray-800/50 flex items-center justify-center text-xs text-gray-500">
+              Running
+            </div>
+            <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(group.cpu, 'cpu')}`}>
+              {formatCPU(group.cpu)}
+            </div>
+            <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(group.memory / (1024 * 1024), 'mem')}`}>
+              {formatMem(group.memory)}
+            </div>
+            <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(group.disk_read / (1024 * 1024), 'disk')}`}>
+              {formatDisk(group.disk_read + group.disk_write)}
+            </div>
+            <div className="p-2 text-right font-mono text-xs text-gray-500 flex items-center justify-end">
+              0 Mbps
+            </div>
+          </div>
+
+          {/* Child Processes (Rendered when expanded) */}
+          {hasMultiple && isExpanded && (
+            <div className="flex flex-col bg-[#0d0d0d]/80 border-b border-gray-800/60">
+              {group.processes.map((child, idx) => {
+                const isChildSelected = selectedPid === child.pid;
+                const isLast = idx === group.processes.length - 1;
+
+                return (
+                  <div
+                    key={`child-${child.pid}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedPid(prev => prev === child.pid ? null : child.pid);
+                      setSelectedGroupKey(null);
+                    }}
+                    className={`grid grid-cols-[3fr_1fr_1fr_1fr_1fr_1fr] border-b border-gray-800/30 text-sm cursor-pointer transition-colors select-none ${
+                      isChildSelected
+                        ? 'bg-blue-600/25 border-l-4 border-l-blue-400'
+                        : 'hover:bg-[#1a1a1a]/90'
+                    }`}
+                  >
+                    <div className="p-2 border-r border-gray-800/40 flex items-center gap-2 pl-9 overflow-hidden whitespace-nowrap text-ellipsis">
+                      <span className="text-gray-600 text-xs font-mono flex-shrink-0 select-none">
+                        {isLast ? '└─' : '├─'}
+                      </span>
+                      <span className="text-xs text-gray-400 font-medium truncate">
+                        {group.name}
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-[#161b26] text-blue-400 border border-blue-500/20 flex-shrink-0">
+                        PID {child.pid}
+                      </span>
+                    </div>
+                    <div className="p-2 border-r border-gray-800/40 flex items-center justify-center text-xs text-gray-500">
+                      Running
+                    </div>
+                    <div className={`p-2 border-r border-gray-800/40 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(child.cpu, 'cpu')}`}>
+                      {formatCPU(child.cpu)}
+                    </div>
+                    <div className={`p-2 border-r border-gray-800/40 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(child.memory / (1024 * 1024), 'mem')}`}>
+                      {formatMem(child.memory)}
+                    </div>
+                    <div className={`p-2 border-r border-gray-800/40 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(child.disk_read / (1024 * 1024), 'disk')}`}>
+                      {formatDisk(child.disk_read + child.disk_write)}
+                    </div>
+                    <div className="p-2 text-right font-mono text-xs text-gray-500 flex items-center justify-end">
+                      0 Mbps
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
+
   return (
-    <div className="flex-1 w-full h-full flex flex-col p-6 bg-[#000000] text-gray-300">
+    <div className="flex-1 w-full h-full min-h-0 flex flex-col p-6 bg-[#000000] text-gray-300 overflow-hidden">
       {/* Top Toolbar */}
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4 flex-shrink-0">
         <div className="flex items-center gap-4">
           <h1 className="text-2xl font-semibold text-white">Processes</h1>
           <input
@@ -187,16 +463,40 @@ export default function Processes() {
         <div className="flex items-center gap-3 text-sm">
           <button 
             onClick={handleEndTask}
-            disabled={selectedPid === null}
+            disabled={!isEndTaskActive}
             className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-xs font-medium ${
-              selectedPid !== null 
+              isEndTaskActive
                 ? 'bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 cursor-pointer shadow-sm' 
                 : 'text-gray-600 border border-gray-800/50 cursor-not-allowed opacity-40'
             }`}
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
-            End task {selectedPid !== null ? `(PID ${selectedPid})` : ''}
+            {getEndTaskButtonLabel()}
           </button>
+          
+          {allMultiGroups.length > 0 && (
+            <button
+              onClick={toggleExpandAll}
+              className="flex items-center gap-1.5 hover:bg-[#1e1e1e] border border-gray-800 px-3 py-1.5 rounded-md transition-colors text-gray-300 hover:text-white text-xs"
+              title="Expand or collapse all multi-process groups"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {allExpanded ? (
+                  <>
+                    <polyline points="4 14 12 6 20 14"></polyline>
+                    <polyline points="4 18 12 10 20 18"></polyline>
+                  </>
+                ) : (
+                  <>
+                    <polyline points="4 6 12 14 20 6"></polyline>
+                    <polyline points="4 10 12 18 20 10"></polyline>
+                  </>
+                )}
+              </svg>
+              {allExpanded ? 'Collapse All' : 'Expand All'}
+            </button>
+          )}
+
           <button 
             onClick={() => setSortAsc(prev => !prev)}
             className="flex items-center gap-2 hover:bg-[#1e1e1e] border border-gray-800 px-3 py-1.5 rounded-md transition-colors text-white text-xs"
@@ -208,9 +508,9 @@ export default function Processes() {
       </div>
 
       {/* Table Structure */}
-      <div className="flex-1 bg-[#121212] rounded-lg border border-gray-800 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-0 bg-[#121212] rounded-lg border border-gray-800 flex flex-col overflow-hidden">
         {/* Table Header */}
-        <div className="grid grid-cols-[3fr_1fr_1fr_1fr_1fr_1fr] border-b border-gray-800 text-xs font-semibold select-none">
+        <div className="grid grid-cols-[3fr_1fr_1fr_1fr_1fr_1fr] border-b border-gray-800 text-xs font-semibold select-none flex-shrink-0 bg-[#121212]">
           <div 
             onClick={() => setSortAsc(prev => !prev)}
             className="p-3 border-r border-gray-800 hover:bg-[#1e1e1e] cursor-pointer flex items-center justify-between"
@@ -240,101 +540,38 @@ export default function Processes() {
         </div>
 
         {/* Table Body */}
-        <div className="overflow-y-auto flex-1 pb-10">
+        <div className="overflow-y-auto flex-1 min-h-0 pb-10 overscroll-contain">
           
           {/* Apps Group */}
-          {apps.length > 0 && (
+          {appsGroups.length > 0 && (
             <>
               <div className="p-3 font-semibold text-sm bg-[#0a0a0a] sticky top-0 border-b border-gray-800 z-10 shadow-sm flex items-center justify-between">
-                <span>Apps ({apps.length})</span>
-                <span className="text-xs font-normal text-gray-500">Positions fixed in alphabetical order</span>
+                <span>Apps ({appsGroups.length})</span>
+                <span className="text-xs font-normal text-gray-500">
+                  {rawAppsCount} total processes
+                </span>
               </div>
-              {apps.map((app) => {
-                const isSelected = selectedPid === app.pid;
-                return (
-                  <div 
-                    key={`proc-${app.pid}`} 
-                    onClick={() => setSelectedPid(prev => prev === app.pid ? null : app.pid)}
-                    className={`grid grid-cols-[3fr_1fr_1fr_1fr_1fr_1fr] border-b border-gray-800/50 text-sm cursor-pointer transition-colors group ${
-                      isSelected 
-                        ? 'bg-blue-600/20 border-l-4 border-l-blue-500 border-r-0' 
-                        : 'hover:bg-[#1a1a1a]'
-                    }`}
-                  >
-                    <div className="p-2 border-r border-gray-800/50 flex items-center gap-3 overflow-hidden whitespace-nowrap text-ellipsis">
-                      <span className="text-gray-600 group-hover:text-gray-400 text-xs w-4 text-center flex-shrink-0">&gt;</span>
-                      <span className="text-lg flex-shrink-0">{getIcon(app.name)}</span>
-                      <span className={`truncate font-medium ${isSelected ? 'text-blue-300' : 'text-gray-200'}`} title={app.name}>
-                        {app.name}
-                      </span>
-                      <span className="text-[10px] text-gray-600 ml-1">PID {app.pid}</span>
-                    </div>
-                    <div className="p-2 border-r border-gray-800/50 flex items-center justify-center text-xs text-gray-500">
-                      Running
-                    </div>
-                    <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(app.cpu, 'cpu')}`}>
-                      {formatCPU(app.cpu)}
-                    </div>
-                    <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(app.memory / (1024 * 1024), 'mem')}`}>
-                      {formatMem(app.memory)}
-                    </div>
-                    <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(app.disk_read / (1024 * 1024), 'disk')}`}>
-                      {formatDisk(app.disk_read + app.disk_write)}
-                    </div>
-                    <div className="p-2 text-right font-mono text-xs text-gray-500 flex items-center justify-end">
-                      0 Mbps
-                    </div>
-                  </div>
-                );
-              })}
+              {renderGroupRows(appsGroups)}
             </>
           )}
 
           {/* Background Processes Group */}
-          {bgApps.length > 0 && (
+          {bgAppsGroups.length > 0 && (
             <>
               <div className="p-3 font-semibold text-sm bg-[#0a0a0a] sticky top-0 border-b border-gray-800 mt-2 z-10 shadow-sm flex items-center justify-between">
-                <span>Background processes ({bgApps.length})</span>
+                <span>Background processes ({bgAppsGroups.length})</span>
+                <span className="text-xs font-normal text-gray-500">
+                  {rawBgAppsCount} total processes
+                </span>
               </div>
-              {bgApps.map((app) => {
-                const isSelected = selectedPid === app.pid;
-                return (
-                  <div 
-                    key={`proc-${app.pid}`} 
-                    onClick={() => setSelectedPid(prev => prev === app.pid ? null : app.pid)}
-                    className={`grid grid-cols-[3fr_1fr_1fr_1fr_1fr_1fr] border-b border-gray-800/50 text-sm cursor-pointer transition-colors group ${
-                      isSelected 
-                        ? 'bg-blue-600/20 border-l-4 border-l-blue-500 border-r-0' 
-                        : 'hover:bg-[#1a1a1a]'
-                    }`}
-                  >
-                    <div className="p-2 border-r border-gray-800/50 flex items-center gap-3 overflow-hidden whitespace-nowrap text-ellipsis">
-                      <span className="text-gray-600 group-hover:text-gray-400 text-xs w-4 text-center flex-shrink-0">&gt;</span>
-                      <span className="text-lg opacity-70 flex-shrink-0">{getIcon(app.name)}</span>
-                      <span className={`truncate ${isSelected ? 'text-blue-300' : 'text-gray-400 group-hover:text-gray-300'}`} title={app.name}>
-                        {app.name}
-                      </span>
-                      <span className="text-[10px] text-gray-600 ml-1">PID {app.pid}</span>
-                    </div>
-                    <div className="p-2 border-r border-gray-800/50 flex items-center justify-center text-xs text-gray-500">
-                      Running
-                    </div>
-                    <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(app.cpu, 'cpu')}`}>
-                      {formatCPU(app.cpu)}
-                    </div>
-                    <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(app.memory / (1024 * 1024), 'mem')}`}>
-                      {formatMem(app.memory)}
-                    </div>
-                    <div className={`p-2 border-r border-gray-800/50 text-right font-mono text-xs flex items-center justify-end ${getHeatmapColor(app.disk_read / (1024 * 1024), 'disk')}`}>
-                      {formatDisk(app.disk_read + app.disk_write)}
-                    </div>
-                    <div className="p-2 text-right font-mono text-xs text-gray-500 flex items-center justify-end">
-                      0 Mbps
-                    </div>
-                  </div>
-                );
-              })}
+              {renderGroupRows(bgAppsGroups)}
             </>
+          )}
+
+          {appsGroups.length === 0 && bgAppsGroups.length === 0 && (
+            <div className="p-8 text-center text-gray-500 text-sm">
+              No matching processes found
+            </div>
           )}
           
         </div>
@@ -342,3 +579,4 @@ export default function Processes() {
     </div>
   );
 }
+

@@ -73,13 +73,15 @@ export default function LineChartCard({ data }: LineChartCardProps) {
             {statusText}
           </span>
         </div>
-        <div className="text-right">
-          <span className="text-2xl font-bold text-white tracking-tight">
+        <div className="text-right flex flex-col items-end">
+          <span className="text-2xl font-bold text-white tracking-tight leading-none">
             {activeTemp.toFixed(1)}°C
           </span>
-          {hoverIdx !== null && (
-            <span className="text-[11px] text-gray-400 block -mt-1">History checkpoint</span>
-          )}
+          <span className={`text-[11px] font-medium mt-1.5 h-4 transition-colors ${
+            hoverIdx !== null ? 'text-blue-400' : 'text-gray-500'
+          }`}>
+            {hoverIdx !== null ? 'History checkpoint' : 'Live reading'}
+          </span>
         </div>
       </div>
       
@@ -123,40 +125,41 @@ export default function LineChartCard({ data }: LineChartCardProps) {
               strokeLinejoin="round"
               className="drop-shadow-lg"
             />
-            
-            {/* Interactive Dot */}
-            <circle 
-              cx={activeX} 
-              cy={activeY} 
-              r="6" 
-              fill="#121212" 
-              stroke={hoverIdx !== null ? "#ffffff" : "#3b82f6"} 
-              strokeWidth="3" 
-              className="transition-all duration-100" 
-            />
-
-            {/* Vertical Line on Hover */}
-            {hoverIdx !== null && (
-              <line 
-                x1={activeX} 
-                y1="0" 
-                x2={activeX} 
-                y2="150" 
-                stroke="#ffffff" 
-                strokeWidth="1" 
-                strokeDasharray="4"
-                opacity="0.3"
-              />
-            )}
           </svg>
           
+          {/* Vertical Guide Line on Hover */}
+          {hoverIdx !== null && (
+            <div 
+              className="absolute top-0 bottom-0 pointer-events-none border-l border-dashed border-white/30 -translate-x-1/2 z-10"
+              style={{ left: `${(activeX / 500) * 100}%` }}
+            />
+          )}
+
+          {/* Interactive Dot - Only rendered on hover so it does not jump to the far right edge when mouse leaves */}
+          {hoverIdx !== null && (
+            <div 
+              className="absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 z-20 flex items-center justify-center transition-all duration-75"
+              style={{ 
+                left: `${(activeX / 500) * 100}%`, 
+                top: `${(activeY / 150) * 100}%` 
+              }}
+            >
+              <div 
+                className="w-5 h-5 rounded-full bg-[#121212] border-[3.5px] border-white shadow-[0_0_10px_rgba(0,0,0,0.9)]"
+              />
+            </div>
+          )}
+
           {/* Hover Tooltip */}
           {hoverIdx !== null && (
             <div 
-              className="absolute pointer-events-none transform -translate-x-1/2 -translate-y-full pb-2"
-              style={{ left: `${(activeX / 500) * 100}%`, top: `${(activeY / 150) * 100}%` }}
+              className="absolute pointer-events-none transform -translate-x-1/2 -translate-y-full pb-3 z-30"
+              style={{ 
+                left: `${Math.min(95, Math.max(5, (activeX / 500) * 100))}%`, 
+                top: `${(activeY / 150) * 100}%` 
+              }}
             >
-              <div className="bg-[#242424] text-white text-xs py-1 px-2 rounded-md shadow-lg border border-gray-700 whitespace-nowrap">
+              <div className="bg-[#242424] text-white text-xs py-1 px-2.5 rounded-md shadow-lg border border-gray-700 whitespace-nowrap font-medium">
                 {activeTemp.toFixed(1)}°C
               </div>
             </div>
