@@ -11,7 +11,7 @@ export default function AntiVirus() {
       hasCheck: true,
     },
     {
-      title: 'Account protection',
+      title: 'Real Time Protection',
       subtitle: 'No action needed.',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -68,7 +68,7 @@ export default function AntiVirus() {
       hasCheck: false,
     },
     {
-      title: 'Family options',
+      title: 'Family Protection',
       subtitle: 'Manage how your family uses their devices.',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -123,6 +123,73 @@ export default function AntiVirus() {
               <p className="text-xs text-gray-500 leading-relaxed">{card.subtitle}</p>
             </div>
           ))}
+        </div>
+
+        {/* VPN Section */}
+        <div className="mt-10">
+          <h2 className="text-[11px] font-bold text-gray-400 tracking-wider mb-4 uppercase">Online Privacy</h2>
+          <div className="bg-[#121212] rounded-lg p-6 shadow-sm border border-gray-900 w-full min-h-[260px] flex flex-col md:flex-row justify-between relative overflow-hidden">
+            <div className="flex flex-col md:flex-row gap-6 relative z-10">
+              <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center shrink-0 border border-red-500/10">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                </svg>
+              </div>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-3 mb-1">
+                  <h3 className="text-white font-bold text-lg">VPN</h3>
+                  <div className="flex items-center gap-1.5 bg-orange-500/10 border border-orange-500/20 text-orange-400 px-2.5 py-0.5 rounded-full text-xs font-semibold">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    Upgrade
+                  </div>
+                </div>
+                <p className="text-gray-400 text-sm mb-5">
+                  Your connection is <span className="text-red-500 font-medium">Public</span>
+                </p>
+                <div className="flex items-center gap-6 bg-[#1a1a1a] border border-gray-800 rounded-full px-4 py-2 w-fit mb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 h-5 rounded-full overflow-hidden flex items-center justify-center text-sm shadow-sm">
+                      🇺🇸
+                    </div>
+                    <span className="text-white text-sm font-medium">New York, NY</span>
+                  </div>
+                  <button className="text-blue-500 text-sm font-bold hover:text-blue-400 transition-colors">
+                    Change
+                  </button>
+                </div> 
+                <p className="text-gray-500 text-[11px] font-bold">Private IP: -</p>
+              </div>
+            </div>
+            <div className="flex flex-col items-end justify-between relative z-10 mt-6 md:mt-0">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center bg-gray-800 rounded-full p-1 w-24 cursor-pointer hover:bg-gray-700 transition-colors">
+                  <div className="w-7 h-7 bg-gray-400 rounded-full shadow-sm"></div>
+                  <span className="text-gray-400 text-sm font-bold ml-2">OFF</span>
+                </div>
+                <button className="text-gray-500 hover:text-white p-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.5"></circle><circle cx="12" cy="5" r="1.5"></circle><circle cx="12" cy="19" r="1.5"></circle></svg>
+                </button>
+              </div>
+            </div>
+
+            <div className="absolute right-0 bottom-0 top-0 w-2/3 opacity-20 pointer-events-none select-none overflow-hidden flex items-end justify-end pb-2 pr-8">
+              <div 
+                  className="w-[300px] h-[220px] bg-current origin-right scale-x-180 scale-y-135 transform -translate-y-7 -translate-x-6"
+                  style={{
+                    WebkitMaskImage: "url('https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg')",
+                    maskImage: "url('https://upload.wikimedia.org/wikipedia/commons/8/80/World_map_-_low_resolution.svg')",
+                    WebkitMaskSize: "contain",
+                    maskSize: "contain",
+                    WebkitMaskRepeat: "no-repeat",
+                    maskRepeat: "no-repeat",
+                    WebkitMaskPosition: "right bottom",
+                    maskPosition: "right bottom"
+                  }}
+              />
+            </div>
+            
+          </div>
         </div>
       </div>
     </div>

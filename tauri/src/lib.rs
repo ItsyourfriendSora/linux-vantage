@@ -444,6 +444,405 @@ fn is_window_maximized(window: tauri::Window) -> Result<bool, String> {
     window.is_maximized().map_err(|e| e.to_string())
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct InstalledSoftware {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub publisher: String,
+    pub size_bytes: u64,
+    pub install_date: String,
+    pub kind: String, // "DesktopApp" | "Package" | "Flatpak"
+    pub uninstall_cmd: String,
+    pub icon: String,
+    pub description: String,
+}
+
+fn parse_size_str(s: &str) -> u64 {
+    let parts: Vec<&str> = s.trim().split_whitespace().collect();
+    if parts.is_empty() {
+        return 0;
+    }
+    let num: f64 = parts[0].parse().unwrap_or(0.0);
+    let unit = parts.get(1).map(|u| u.to_lowercase()).unwrap_or_default();
+    if unit.contains("gib") || unit.contains("gb") {
+        (num * 1024.0 * 1024.0 * 1024.0) as u64
+    } else if unit.contains("mib") || unit.contains("mb") {
+        (num * 1024.0 * 1024.0) as u64
+    } else if unit.contains("kib") || unit.contains("kb") {
+        (num * 1024.0) as u64
+    } else {
+        num as u64
+    }
+}
+
+#[tauri::command]
+fn get_installed_software() -> Vec<InstalledSoftware> {
+    let mut apps: Vec<InstalledSoftware> = Vec::new();
+
+    #[cfg(target_os = "windows")]
+    {
+        let ps_script = r#"
+        $paths = @(
+            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
+            'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+        $items = Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { 
+            $_.DisplayName -and ($_.SystemComponent -ne 1) -and -not $_.ParentKeyName 
+        } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, EstimatedSize, UninstallString
+        $items | ConvertTo-Json -Compress
+        "#;
+
+        if let Ok(output) = Command::new("powershell")
+            .args(&["-NoProfile", "-Command", ps_script])
+            .output() 
+        {
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&out_str) {
+                let list = if let Some(arr) = val.as_array() {
+                    arr.clone()
+                } else if val.is_object() {
+                    vec![val]
+                } else {
+                    vec![]
+                };
+
+                for item in list {
+                    if let Some(name) = item.get("DisplayName").and_then(|v| v.as_str()) {
+                        let version = item.get("DisplayVersion").and_then(|v| v.as_str()).unwrap_or("-").to_string();
+                        let publisher = item.get("Publisher").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
+                        let install_date = item.get("InstallDate").and_then(|v| v.as_str()).unwrap_or("-").to_string();
+                        let size_kb = item.get("EstimatedSize").and_then(|v| v.as_u64()).unwrap_or(0);
+                        let uninstall_cmd = item.get("UninstallString").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+                        apps.push(InstalledSoftware {
+                            id: name.to_string(),
+                            name: name.to_string(),
+                            version,
+                            publisher,
+                            size_bytes: size_kb * 1024,
+                            install_date,
+                            kind: "DesktopApp".to_string(),
+                            uninstall_cmd,
+                            icon: "app".to_string(),
+                            description: "Desktop Application".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let app_dirs = [
+            "/usr/share/applications",
+            "/usr/local/share/applications",
+            "/var/lib/flatpak/exports/share/applications",
+        ];
+
+        let home = std::env::var("HOME").unwrap_or_default();
+        let user_app_dir = format!("{}/.local/share/applications", home);
+        let user_flatpak_dir = format!("{}/.local/share/flatpak/exports/share/applications", home);
+
+        let mut seen_ids = std::collections::HashSet::new();
+
+        let mut all_dirs: Vec<String> = app_dirs.iter().map(|s| s.to_string()).collect();
+        all_dirs.push(user_app_dir);
+        all_dirs.push(user_flatpak_dir);
+
+        for dir in all_dirs {
+            let path = std::path::Path::new(&dir);
+            if !path.exists() {
+                continue;
+            }
+            if let Ok(entries) = std::fs::read_dir(path) {
+                for entry in entries.flatten() {
+                    let file_path = entry.path();
+                    if file_path.extension().and_then(|s| s.to_str()) == Some("desktop") {
+                        if let Ok(content) = std::fs::read_to_string(&file_path) {
+                            let mut name = String::new();
+                            let mut exec = String::new();
+                            let mut icon = String::new();
+                            let mut comment = String::new();
+                            let mut no_display = false;
+                            let mut app_type = String::new();
+
+                            for line in content.lines() {
+                                let line = line.trim();
+                                if line.starts_with("Type=") {
+                                    app_type = line["Type=".len()..].trim().to_string();
+                                } else if line.starts_with("Name=") && name.is_empty() {
+                                    name = line["Name=".len()..].trim().to_string();
+                                } else if line.starts_with("Exec=") && exec.is_empty() {
+                                    exec = line["Exec=".len()..].trim().to_string();
+                                } else if line.starts_with("Icon=") && icon.is_empty() {
+                                    icon = line["Icon=".len()..].trim().to_string();
+                                } else if line.starts_with("Comment=") && comment.is_empty() {
+                                    comment = line["Comment=".len()..].trim().to_string();
+                                } else if line == "NoDisplay=true" {
+                                    no_display = true;
+                                }
+                            }
+
+                            if no_display || (app_type != "Application" && !app_type.is_empty()) || name.is_empty() {
+                                continue;
+                            }
+
+                            let file_name = file_path.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+                            let id = file_name.trim_end_matches(".desktop").to_string();
+                            if seen_ids.contains(&id) || seen_ids.contains(&name) {
+                                continue;
+                            }
+                            seen_ids.insert(id.clone());
+                            seen_ids.insert(name.clone());
+
+                            let mut size_bytes = 0;
+                            let exec_bin = exec.split_whitespace().next().unwrap_or("");
+                            if let Ok(meta) = std::fs::metadata(exec_bin) {
+                                size_bytes = meta.len();
+                            }
+
+                            let is_flatpak = file_path.to_string_lossy().contains("flatpak");
+
+                            apps.push(InstalledSoftware {
+                                id: id.clone(),
+                                name: name.clone(),
+                                version: "-".to_string(),
+                                publisher: if is_flatpak { "Flatpak".to_string() } else { "System App".to_string() },
+                                size_bytes,
+                                install_date: "-".to_string(),
+                                kind: if is_flatpak { "Flatpak".to_string() } else { "DesktopApp".to_string() },
+                                uninstall_cmd: if is_flatpak { id } else { exec_bin.to_string() },
+                                icon: if icon.is_empty() { "app".to_string() } else { icon },
+                                description: if comment.is_empty() { "Desktop Application".to_string() } else { comment },
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Package Manager scan (pacman -Qi)
+        if let Ok(output) = Command::new("sh")
+            .arg("-c")
+            .arg("pacman -Qi $(pacman -Qqe 2>/dev/null) 2>/dev/null")
+            .output() 
+        {
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            let mut cur_name = String::new();
+            let mut cur_version = String::new();
+            let mut cur_desc = String::new();
+            let mut cur_size: u64 = 0;
+            let mut cur_url = String::new();
+
+            for line in out_str.lines() {
+                if line.starts_with("Name            :") {
+                    if !cur_name.is_empty() {
+                        apps.push(InstalledSoftware {
+                            id: cur_name.clone(),
+                            name: cur_name.clone(),
+                            version: cur_version.clone(),
+                            publisher: if cur_url.is_empty() { "Arch Linux / Pacman".to_string() } else { cur_url.clone() },
+                            size_bytes: cur_size,
+                            install_date: "-".to_string(),
+                            kind: "Package".to_string(),
+                            uninstall_cmd: cur_name.clone(),
+                            icon: "package".to_string(),
+                            description: cur_desc.clone(),
+                        });
+                    }
+                    cur_name = line["Name            :".len()..].trim().to_string();
+                    cur_version.clear();
+                    cur_desc.clear();
+                    cur_size = 0;
+                    cur_url.clear();
+                } else if line.starts_with("Version         :") {
+                    cur_version = line["Version         :".len()..].trim().to_string();
+                } else if line.starts_with("Description     :") {
+                    cur_desc = line["Description     :".len()..].trim().to_string();
+                } else if line.starts_with("URL             :") {
+                    cur_url = line["URL             :".len()..].trim().to_string();
+                } else if line.starts_with("Installed Size  :") {
+                    let size_str = line["Installed Size  :".len()..].trim();
+                    cur_size = parse_size_str(size_str);
+                }
+            }
+            if !cur_name.is_empty() {
+                apps.push(InstalledSoftware {
+                    id: cur_name.clone(),
+                    name: cur_name.clone(),
+                    version: cur_version,
+                    publisher: if cur_url.is_empty() { "Arch Linux / Pacman".to_string() } else { cur_url },
+                    size_bytes: cur_size,
+                    install_date: "-".to_string(),
+                    kind: "Package".to_string(),
+                    uninstall_cmd: cur_name,
+                    icon: "package".to_string(),
+                    description: cur_desc,
+                });
+            }
+        } else if let Ok(output) = Command::new("sh")
+            .arg("-c")
+            .arg("dpkg-query -W -f='${Package}\t${Version}\t${Installed-Size}\t${binary:Summary}\n' 2>/dev/null")
+            .output()
+        {
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            for line in out_str.lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 3 {
+                    let pkg = parts[0].trim().to_string();
+                    let ver = parts[1].trim().to_string();
+                    let size_kb = parts[2].trim().parse::<u64>().unwrap_or(0);
+                    let desc = if parts.len() >= 4 { parts[3].trim().to_string() } else { "System package".to_string() };
+                    apps.push(InstalledSoftware {
+                        id: pkg.clone(),
+                        name: pkg.clone(),
+                        version: ver,
+                        publisher: "APT / Debian".to_string(),
+                        size_bytes: size_kb * 1024,
+                        install_date: "-".to_string(),
+                        kind: "Package".to_string(),
+                        uninstall_cmd: pkg,
+                        icon: "package".to_string(),
+                        description: desc,
+                    });
+                }
+            }
+        }
+
+        // Flatpak list
+        if let Ok(output) = Command::new("flatpak")
+            .args(&["list", "--app", "--columns=application,name,version,size,description"])
+            .output()
+        {
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            for line in out_str.lines() {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() >= 2 {
+                    let app_id = parts[0].trim().to_string();
+                    let app_name = parts[1].trim().to_string();
+                    let ver = if parts.len() > 2 { parts[2].trim().to_string() } else { "-".to_string() };
+                    let size_str = if parts.len() > 3 { parts[3].trim() } else { "" };
+                    let desc = if parts.len() > 4 { parts[4].trim().to_string() } else { "Flatpak Application".to_string() };
+
+                    apps.push(InstalledSoftware {
+                        id: app_id.clone(),
+                        name: if app_name.is_empty() { app_id.clone() } else { app_name },
+                        version: ver,
+                        publisher: "Flathub / Flatpak".to_string(),
+                        size_bytes: parse_size_str(size_str),
+                        install_date: "-".to_string(),
+                        kind: "Flatpak".to_string(),
+                        uninstall_cmd: app_id,
+                        icon: "flatpak".to_string(),
+                        description: desc,
+                    });
+                }
+            }
+        }
+    }
+
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps
+}
+
+#[tauri::command]
+#[allow(unused_variables)]
+fn uninstall_software(id: String, kind: String, uninstall_cmd: String) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        if uninstall_cmd.is_empty() {
+            return Err("Perintah pencopotan tidak ditemukan untuk aplikasi ini.".to_string());
+        }
+
+        let status = Command::new("cmd")
+            .args(&["/c", &uninstall_cmd])
+            .status()
+            .map_err(|e| format!("Gagal menjalankan uninstaller: {}", e))?;
+
+        if status.success() {
+            Ok(format!("Aplikasi '{}' berhasil diproses untuk pencopotan.", id))
+        } else {
+            Err(format!("Uninstaller keluar dengan kode status: {:?}", status.code()))
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if kind == "Flatpak" {
+            let output = Command::new("flatpak")
+                .args(&["uninstall", "-y", &id])
+                .output()
+                .map_err(|e| format!("Gagal menjalankan flatpak: {}", e))?;
+
+            if output.status.success() {
+                Ok(format!("Aplikasi Flatpak '{}' berhasil dihapus.", id))
+            } else {
+                Err(String::from_utf8_lossy(&output.stderr).to_string())
+            }
+        } else if kind == "Package" {
+            let is_pacman = Command::new("which").arg("pacman").output().map(|o| o.status.success()).unwrap_or(false);
+            let is_apt = Command::new("which").arg("apt").output().map(|o| o.status.success()).unwrap_or(false);
+
+            if is_pacman {
+                let output = Command::new("pkexec")
+                    .args(&["pacman", "-R", "--noconfirm", &id])
+                    .output()
+                    .map_err(|e| format!("Gagal memanggil pkexec pacman: {}", e))?;
+
+                if output.status.success() {
+                    Ok(format!("Paket '{}' berhasil dihapus dari sistem.", id))
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr);
+                    Err(if err.is_empty() { "Penghapusan dibatalkan oleh pengguna atau gagal.".to_string() } else { err.to_string() })
+                }
+            } else if is_apt {
+                let output = Command::new("pkexec")
+                    .args(&["apt", "remove", "-y", &id])
+                    .output()
+                    .map_err(|e| format!("Gagal memanggil pkexec apt: {}", e))?;
+
+                if output.status.success() {
+                    Ok(format!("Paket '{}' berhasil dihapus dari sistem.", id))
+                } else {
+                    let err = String::from_utf8_lossy(&output.stderr);
+                    Err(if err.is_empty() { "Penghapusan dibatalkan oleh pengguna atau gagal.".to_string() } else { err.to_string() })
+                }
+            } else {
+                Err("Manajer paket tidak didukung untuk penghapusan otomatis.".to_string())
+            }
+        } else {
+            // DesktopApp
+            let home = std::env::var("HOME").unwrap_or_default();
+            let user_desktop = format!("{}/.local/share/applications/{}.desktop", home, id);
+            let path = std::path::Path::new(&user_desktop);
+            if path.exists() {
+                std::fs::remove_file(path).map_err(|e| format!("Gagal menghapus file desktop: {}", e))?;
+                Ok(format!("Pintasan desktop '{}' berhasil dihapus.", id))
+            } else {
+                let is_pacman = Command::new("which").arg("pacman").output().map(|o| o.status.success()).unwrap_or(false);
+                if is_pacman {
+                    let output = Command::new("pkexec")
+                        .args(&["pacman", "-R", "--noconfirm", &id])
+                        .output()
+                        .map_err(|e| format!("Gagal memanggil pkexec: {}", e))?;
+                    if output.status.success() {
+                        return Ok(format!("Aplikasi '{}' berhasil dihapus.", id));
+                    }
+                }
+                Err(format!("Aplikasi '{}' adalah komponen sistem. Silakan hapus paket yang terkait.", id))
+            }
+        }
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        Err("Sistem operasi tidak didukung untuk penghapusan otomatis.".to_string())
+    }
+}
+
 #[tauri::command]
 fn close_window(window: tauri::Window) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
@@ -477,7 +876,9 @@ pub fn run() {
             minimize_window,
             toggle_maximize_window,
             is_window_maximized,
-            close_window
+            close_window,
+            get_installed_software,
+            uninstall_software
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
