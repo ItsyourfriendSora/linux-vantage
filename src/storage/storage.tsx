@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { AppIcon } from '../components/AppIcon';
 import { invoke } from '@tauri-apps/api/core';
 
 export interface DiskInfo {
@@ -145,7 +146,6 @@ export default function Storage() {
       });
 
       showToast(msg || `Berhasil menghapus ${deleteTarget.name}`, 'success');
-      // Remove from state immediately
       setSoftwareList(prev => prev.filter(s => s.id !== deleteTarget.id));
       setDeleteTarget(null);
       setConfirmChecked(false);
@@ -157,49 +157,6 @@ export default function Storage() {
     }
   };
 
-  const getSoftwareIcon = (item: InstalledSoftware) => {
-    const n = (item.name + ' ' + item.id).toLowerCase();
-    if (n.includes('chrome') || n.includes('firefox') || n.includes('browser') || n.includes('brave') || n.includes('zen')) {
-      return (
-        <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center shrink-0 border border-blue-500/20">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
-        </div>
-      );
-    }
-    if (n.includes('code') || n.includes('nvim') || n.includes('vim') || n.includes('dev') || n.includes('git')) {
-      return (
-        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-        </div>
-      );
-    }
-    if (n.includes('discord') || n.includes('telegram') || n.includes('chat') || n.includes('vesktop')) {
-      return (
-        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/20">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
-        </div>
-      );
-    }
-    if (item.kind === 'Package') {
-      return (
-        <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-        </div>
-      );
-    }
-    if (item.kind === 'Flatpak') {
-      return (
-        <div className="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center shrink-0 border border-purple-500/20">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 8 6 4-6 4Z"/></svg>
-        </div>
-      );
-    }
-    return (
-      <div className="w-8 h-8 rounded-lg bg-gray-800 text-gray-300 flex items-center justify-center shrink-0 border border-gray-700">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/></svg>
-      </div>
-    );
-  };
 
   const getBadgeStyle = (kind: string) => {
     switch (kind) {
@@ -323,28 +280,29 @@ export default function Storage() {
         </div>
 
         {/* Software Management Section */}
-        <div className="bg-[#121212] rounded-lg border border-gray-900 p-6 flex flex-col gap-6 shadow-sm">
+        {/* Software Management Section */}
+        <div className="flex flex-col gap-4">
           
-          {/* Controls Bar */}
+          {/* Controls Bar (Berada di atas tabel) */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
             
             {/* Filter Tabs */}
-            <div className="flex items-center gap-1 bg-[#1a1a1a] p-1 rounded-lg border border-gray-800 w-fit text-xs font-medium">
+            <div className="flex items-center gap-1 bg-[#121212] p-1 rounded-sm border border-gray-800 w-fit text-xs font-medium">
               <button 
                 onClick={() => setFilterType('all')}
-                className={`px-3 py-1.5 rounded-md transition-colors ${
+                className={`px-3 py-1.5 rounded-sm transition-colors ${
                   filterType === 'all' ? 'bg-[#262626] text-white shadow' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Semua ({counts.all})
+                All ({counts.all})
               </button>
               <button 
                 onClick={() => setFilterType('desktop')}
-                className={`px-3 py-1.5 rounded-md transition-colors ${
+                className={`px-3 py-1.5 rounded-sm transition-colors ${
                   filterType === 'desktop' ? 'bg-[#262626] text-white shadow' : 'text-gray-400 hover:text-white'
                 }`}
               >
-                Aplikasi Desktop ({counts.desktop})
+                Aplication Desktop ({counts.desktop})
               </button>
               {counts.package > 0 && (
                 <button 
@@ -373,10 +331,10 @@ export default function Storage() {
               <div className="relative">
                 <input 
                   type="text"
-                  placeholder="Cari aplikasi atau paket..."
+                  placeholder="Find Aplication Or Packcage Here..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  className="bg-[#1a1a1a] border border-gray-800 text-white text-xs rounded-lg pl-8 pr-8 py-2 w-64 focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
+                  className="bg-[#121212] border border-gray-800 text-white text-xs rounded-sm pl-8 pr-8 py-2 w-64 focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-500"
                 />
                 <svg className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -392,124 +350,126 @@ export default function Storage() {
               </div>
 
               {/* Sort Toggle */}
-              <div className="flex items-center bg-[#1a1a1a] border border-gray-800 rounded-lg p-0.5 text-xs text-gray-400">
+              <div className="flex items-center bg-[#121212] border border-gray-800 rounded-sm p-0.5 text-xs text-gray-400">
                 <button
                   onClick={() => {
                     if (sortBy === 'name') setSortAsc(!sortAsc);
                     else { setSortBy('name'); setSortAsc(true); }
                   }}
-                  className={`px-2.5 py-1.5 rounded-md transition-colors ${sortBy === 'name' ? 'bg-[#262626] text-white font-medium' : 'hover:text-white'}`}
+                  className={`px-2.5 py-1.5 rounded-sm transition-colors ${sortBy === 'name' ? 'bg-[#262626] text-white font-medium' : 'hover:text-white'}`}
                 >
-                  Nama {sortBy === 'name' ? (sortAsc ? '↑' : '↓') : ''}
+                  Name {sortBy === 'name' ? (sortAsc ? '↑' : '↓') : ''}
                 </button>
                 <button
                   onClick={() => {
                     if (sortBy === 'size') setSortAsc(!sortAsc);
                     else { setSortBy('size'); setSortAsc(false); }
                   }}
-                  className={`px-2.5 py-1.5 rounded-md transition-colors ${sortBy === 'size' ? 'bg-[#262626] text-white font-medium' : 'hover:text-white'}`}
+                  className={`px-2.5 py-1.5 rounded-sm transition-colors ${sortBy === 'size' ? 'bg-[#262626] text-white font-medium' : 'hover:text-white'}`}
                 >
-                  Ukuran {sortBy === 'size' ? (sortAsc ? '↑' : '↓') : ''}
+                  Size {sortBy === 'size' ? (sortAsc ? '↑' : '↓') : ''}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Table / List */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-gray-800/80 text-gray-500 font-semibold uppercase tracking-wider">
-                  <th className="py-3 px-4">Aplikasi & Komponen</th>
-                  <th className="py-3 px-4">Tipe</th>
-                  <th className="py-3 px-4">Ukuran</th>
-                  <th className="py-3 px-4">Versi</th>
-                  <th className="py-3 px-4 text-right">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-900/60">
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className="py-12 text-center text-gray-500">
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                        <span>Sedang memindai aplikasi dan paket...</span>
-                      </div>
-                    </td>
+          {/* Table Container (Header menempel tepat di atas tabel dengan border rapi) */}
+          <div className="bg-[#121212] rounded-lg border border-gray-800 overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-[#181818] text-gray-400 font-semibold uppercase tracking-wider text-[11px] border-b border-gray-800">
+                    <th className="py-3 px-4 border-r border-gray-800">Aplikasi & Komponen</th>
+                    <th className="py-3 px-4 border-r border-gray-800">Tipe</th>
+                    <th className="py-3 px-4 border-r border-gray-800">Ukuran</th>
+                    <th className="py-3 px-4 border-r border-gray-800">Versi</th>
+                    <th className="py-3 px-4 text-right">Aksi</th>
                   </tr>
-                ) : filteredSoftware.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-12 text-center text-gray-500">
-                      Tidak ada aplikasi atau paket yang sesuai dengan pencarian Anda.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredSoftware.map((item) => (
-                    <tr 
-                      key={item.id}
-                      className="hover:bg-[#181818] transition-colors group"
-                    >
-                      {/* Name & Icon */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          {getSoftwareIcon(item)}
-                          <div className="flex flex-col max-w-[320px]">
-                            <span className="text-white font-medium text-sm truncate">{item.name}</span>
-                            <span className="text-gray-500 text-[11px] truncate">{item.description || item.publisher}</span>
-                          </div>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-gray-500">
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                          <span>Sedang memindai aplikasi dan paket...</span>
                         </div>
                       </td>
-
-                      {/* Type Badge */}
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${getBadgeStyle(item.kind)}`}>
-                          {item.kind === 'DesktopApp' ? 'Desktop App' : item.kind === 'Package' ? 'Package' : item.kind}
-                        </span>
-                      </td>
-
-                      {/* Size */}
-                      <td className="py-3 px-4 font-mono text-gray-300">
-                        {item.size_bytes > 0 ? formatBytes(item.size_bytes) : '-'}
-                      </td>
-
-                      {/* Version */}
-                      <td className="py-3 px-4 text-gray-400 font-mono">
-                        {item.version || '-'}
-                      </td>
-
-                      {/* Action (Uninstall) */}
-                      <td className="py-3 px-4 text-right">
-                        <button
-                          onClick={() => {
-                            setDeleteTarget(item);
-                            setConfirmChecked(false);
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all inline-flex items-center gap-1.5"
-                          title={`Hapus ${item.name}`}
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                            <line x1="10" y1="11" x2="10" y2="17"></line>
-                            <line x1="14" y1="11" x2="14" y2="17"></line>
-                          </svg>
-                          <span>Hapus</span>
-                        </button>
+                    </tr>
+                  ) : filteredSoftware.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-gray-500">
+                        Tidak ada aplikasi atau paket yang sesuai dengan pencarian Anda.
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                  ) : (
+                    filteredSoftware.map((item) => (
+                      <tr 
+                        key={item.id}
+                        className="border-b border-gray-800/80 last:border-b-0 hover:bg-[#181818] transition-colors group"
+                      >
+                        {/* Name & Icon */}
+                        <td className="py-3 px-4 border-r border-gray-800/80">
+                          <div className="flex items-center gap-3">
+                            <AppIcon name={item.name} kind={item.kind} size={32} className="w-8 h-8 flex-shrink-0" />
+                            <div className="flex flex-col max-w-[320px]">
+                              <span className="text-white font-medium text-sm truncate">{item.name}</span>
+                              <span className="text-gray-500 text-[11px] truncate">{item.description || item.publisher}</span>
+                            </div>
+                          </div>
+                        </td>
 
-          {/* Footer Stats */}
-          {!loading && (
-            <div className="flex items-center justify-between text-xs text-gray-500 border-t border-gray-900 pt-4">
-              <span>Menampilkan {filteredSoftware.length} dari {softwareList.length} total item</span>
-              <span>Data otomatis tersinkronisasi dengan sistem</span>
+                        {/* Type Badge */}
+                        <td className="py-3 px-4 border-r border-gray-800/80">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border ${getBadgeStyle(item.kind)}`}>
+                            {item.kind === 'DesktopApp' ? 'Desktop App' : item.kind === 'Package' ? 'Package' : item.kind}
+                          </span>
+                        </td>
+
+                        {/* Size */}
+                        <td className="py-3 px-4 border-r border-gray-800/80 font-mono text-gray-300">
+                          {item.size_bytes > 0 ? formatBytes(item.size_bytes) : '-'}
+                        </td>
+
+                        {/* Version */}
+                        <td className="py-3 px-4 border-r border-gray-800/80 text-gray-400 font-mono">
+                          {item.version || '-'}
+                        </td>
+
+                        {/* Action (Uninstall) */}
+                        <td className="py-3 px-4 text-right">
+                          <button
+                            onClick={() => {
+                              setDeleteTarget(item);
+                              setConfirmChecked(false);
+                            }}
+                            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500 hover:text-white transition-all inline-flex items-center gap-1.5"
+                            title={`Hapus ${item.name}`}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6"></polyline>
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              <line x1="10" y1="11" x2="10" y2="17"></line>
+                              <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                            <span>Hapus</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+
+            {/* Footer Stats */}
+            {!loading && (
+              <div className="flex items-center justify-between text-xs text-gray-500 border-t border-gray-800 px-4 py-3 bg-[#151515]">
+                <span>Menampilkan {filteredSoftware.length} dari {softwareList.length} total item</span>
+                <span>Data otomatis tersinkronisasi dengan sistem</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -624,4 +584,3 @@ export default function Storage() {
     </div>
   );
 }
-

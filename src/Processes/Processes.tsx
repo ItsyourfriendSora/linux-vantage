@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { AppIcon } from '../components/AppIcon';
 
 interface ProcessInfo {
   pid: number;
@@ -128,15 +129,6 @@ export default function Processes() {
     return `${val.toFixed(1)}%`;
   };
 
-  const getIcon = (name: string) => {
-    const n = name.toLowerCase();
-    if (n.includes('chrome') || n.includes('brave') || n.includes('firefox') || n.includes('edge')) return '🌐';
-    if (n.includes('discord') || n.includes('slack') || n.includes('messenger')) return '💬';
-    if (n.includes('code') || n.includes('nvim') || n.includes('nano') || n.includes('antigravity')) return '📝';
-    if (n.includes('spotify') || n.includes('music')) return '🎵';
-    if (n.includes('steam') || n.includes('game') || n.includes('roblox')) return '🎮';
-    return '⚙️';
-  };
 
   // Filtered by search if user is searching
   const filtered = useMemo(() => {
@@ -348,7 +340,7 @@ export default function Processes() {
               )}
 
               {/* Icon */}
-              <span className="text-lg flex-shrink-0">{getIcon(group.name)}</span>
+              <AppIcon name={group.name} size={20} className="w-5 h-5 flex-shrink-0" />
 
               {/* Group Name */}
               <span 
@@ -414,6 +406,7 @@ export default function Processes() {
                       <span className="text-gray-600 text-xs font-mono flex-shrink-0 select-none">
                         {isLast ? '└─' : '├─'}
                       </span>
+                      <AppIcon name={group.name} size={14} className="w-3.5 h-3.5 flex-shrink-0 opacity-75" />
                       <span className="text-xs text-gray-400 font-medium truncate">
                         {group.name}
                       </span>

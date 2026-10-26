@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppIcon } from '../components/AppIcon';
 import { HistoryEvent, getHistory, subscribeHistory } from '../store/historyStore';
 
 export default function AppHistory() {
@@ -11,16 +12,6 @@ export default function AppHistory() {
     return unsubscribe;
   }, []);
 
-  const getIcon = (name: string) => {
-    const n = name.toLowerCase();
-    if (n.includes('chrome') || n.includes('brave') || n.includes('firefox') || n.includes('edge')) return '🌐';
-    if (n.includes('discord') || n.includes('slack') || n.includes('messenger')) return '💬';
-    if (n.includes('code') || n.includes('nvim') || n.includes('nano')) return '📝';
-    if (n.includes('spotify') || n.includes('music')) return '🎵';
-    if (n.includes('steam') || n.includes('game')) return '🎮';
-    if (n.includes('system') || n.includes('daemon') || n.includes('service') || n.includes('dbus')) return '⚙️';
-    return '⚙️';
-  };
 
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -59,7 +50,7 @@ export default function AppHistory() {
             events.map((event) => (
               <div key={event.id} className="grid grid-cols-[3fr_1fr_2fr_1fr] border-b border-gray-800/50 hover:bg-[#1e1e1e] text-sm group">
                 <div className="p-2 border-r border-gray-800/50 flex items-center gap-3 min-w-0">
-                  <span className="text-lg flex-shrink-0">{getIcon(event.name)}</span>
+                  <AppIcon name={event.name} size={20} className="w-5 h-5 flex-shrink-0" />
                   <span className="text-gray-200 truncate" title={event.name}>{event.name}</span>
                 </div>
                 <div className="p-2 border-r border-gray-800/50 text-gray-400 flex items-center">
