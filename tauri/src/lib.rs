@@ -848,6 +848,171 @@ fn close_window(window: tauri::Window) -> Result<(), String> {
     window.close().map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn get_thermal_mode() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        // 1. Read directly from file (0ms, non-blocking)
+        if let Ok(content) = std::fs::read_to_string("C:\\ProgramData\\Nexora\\thermal_current.txt") {
+            let s = content.trim();
+            if s == "1" || s.eq_ignore_ascii_case("quiet") {
+                return Ok("Quiet".to_string());
+            } else if s == "3" || s.eq_ignore_ascii_case("performance") {
+                return Ok("Performance".to_string());
+            } else if s == "2" || s.eq_ignore_ascii_case("balance") {
+                return Ok("Balance".to_string());
+            }
+        }
+
+        // 2. Fallback to active power scheme (10ms, no powershell)
+        if let Ok(output) = Command::new("powercfg").arg("/getactivescheme").output() {
+            let out_str = String::from_utf8_lossy(&output.stdout);
+            if out_str.contains("11e82a5f") || out_str.contains("High performance") || out_str.contains("8c5e7fda") {
+                return Ok("Performance".to_string());
+            } else if out_str.contains("9a195b1b") || out_str.contains("Power saver") || out_str.contains("a1841308") {
+                return Ok("Quiet".to_string());
+            } else {
+                return Ok("Balance".to_string());
+            }
+        }
+
+        Ok("Balance".to_string())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(content) = std::fs::read_to_string("/sys/firmware/acpi/platform_profile") {
+            let s = content.trim().to_lowercase();
+            if s.contains("quiet") || s.contains("low-power") {
+                return Ok("Quiet".to_string());
+            } else if s.contains("performance") {
+                return Ok("Performance".to_string());
+            } else {
+                return Ok("Balance".to_string());
+            }
+        }
+
+        if let Ok(output) = Command::new("powerprofilesctl").arg("get").output() {
+            let s = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+            if s.contains("power-saver") || s.contains("quiet") {
+                return Ok("Quiet".to_string());
+            } else if s.contains("performance") {
+                return Ok("Performance".to_string());
+            } else {
+                return Ok("Balance".to_string());
+            }
+        }
+
+        Ok("Balance".to_string())
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        Ok("Balance".to_string())
+    }
+}
+
+#[tauri::command]
+fn set_thermal_mode(mode: String) -> Result<String, String> {
+    let mode_lower = mode.to_lowercase();
+    let (mode_num, mode_name, pwr_guid, _linux_prof) = match mode_lower.as_str() {
+        "quiet" | "low-power" => (1, "Quiet", "9a195b1b-4de2-4b9d-a7b7-309b39a85220", "quiet"),
+        "performance" | "high" => (3, "Performance", "11e82a5f-2c00-4e5e-b18c-4611bc268338", "performance"),
+        _ => (2, "Balance", "381b4222-f694-41f0-9685-ff5bb260df2e", "balanced"),
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        // 1. Immediately write to disk so get_thermal_mode always matches
+        let _ = std::fs::create_dir_all("C:\\ProgramData\\Nexora");
+        let _ = std::fs::write("C:\\ProgramData\\Nexora\\thermal_target.txt", mode_num.to_string());
+        let _ = std::fs::write("C:\\ProgramData\\Nexora\\thermal_current.txt", mode_num.to_string());
+
+        // 2. Synchronize Windows power scheme via powercfg immediately
+        let _ = Command::new("powercfg").args(&["/setactive", pwr_guid]).output();
+        if mode_num == 1 {
+            let _ = Command::new("powercfg").args(&["/setactive", "a1841308-3541-4fab-bc81-f71556f20b4a"]).output();
+        } else if mode_num == 3 {
+            let _ = Command::new("powercfg").args(&["/setactive", "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c"]).output();
+        }
+
+        // 3. Apply Lenovo WMI SetSmartFanMode (non-blocking)
+        let ps_script = format!(
+            r#"
+            $mode = {}
+            # 1. Try direct WMI call (succeeds if running as Administrator)
+            try {{
+                $gz = Get-WmiObject -Namespace "root\WMI" -Class LENOVO_GAMEZONE_DATA -ErrorAction Stop
+                $gz.SetSmartFanMode([uint32]$mode)
+                exit 0
+            }} catch {{
+                try {{
+                    $gz = Get-CimInstance -Namespace root\wmi -ClassName LENOVO_GAMEZONE_DATA -ErrorAction Stop
+                    Invoke-CimMethod -InputObject $gz -MethodName SetSmartFanMode -Arguments @{{ Data = [uint32]$mode }} -ErrorAction Stop
+                    exit 0
+                }} catch {{}}
+            }}
+
+            # 2. Try Scheduled Task
+            try {{
+                $taskRes = (schtasks /run /tn "NexoraThermalHelper" 2>&1 | Out-String)
+                if ($taskRes -match "SUCCESS") {{
+                    exit 0
+                }}
+            }} catch {{}}
+
+            # 3. Elevation fallback: launch WITHOUT -Wait so Tauri thread NEVER hangs
+            try {{
+                $inner = "`$m = $mode; try {{ `$gz = Get-WmiObject -Namespace root\WMI -Class LENOVO_GAMEZONE_DATA -ErrorAction Stop; `$gz.SetSmartFanMode([uint32]`$m) }} catch {{ `$gz = Get-CimInstance -Namespace root\wmi -ClassName LENOVO_GAMEZONE_DATA -ErrorAction Stop; Invoke-CimMethod -InputObject `$gz -MethodName SetSmartFanMode -Arguments @{{ Data = [uint32]`$m }} -ErrorAction Stop }}; try {{ `$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\ProgramData\Nexora\thermal_control.ps1 -Action set'; `$principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest; `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew; Register-ScheduledTask -TaskName 'NexoraThermalHelper' -Action `$action -Principal `$principal -Settings `$settings -Force }} catch {{}}"
+                Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"$inner`""
+            }} catch {{}}
+            "#,
+            mode_num
+        );
+
+        let _ = Command::new("powershell")
+            .args(&["-NoProfile", "-Command", &ps_script])
+            .output();
+
+        Ok(format!("Thermal Mode diatur ke {}", mode_name))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let _ = linux_prof;
+        let profile_str = match mode_num {
+            1 => "quiet",
+            3 => "performance",
+            _ => "balanced",
+        };
+
+        // Try direct sysfs
+        if std::fs::write("/sys/firmware/acpi/platform_profile", profile_str).is_ok() {
+            return Ok(format!("Platform profile berhasil diubah ke {}", profile_str));
+        }
+
+        // Try powerprofilesctl
+        if let Ok(res) = Command::new("powerprofilesctl").args(&["set", profile_str]).output() {
+            if res.status.success() {
+                return Ok(format!("Power profile berhasil diubah via powerprofilesctl ke {}", profile_str));
+            }
+        }
+
+        // Try pkexec
+        let cmd = format!("echo {} | tee /sys/firmware/acpi/platform_profile", profile_str);
+        let _ = Command::new("pkexec").args(&["sh", "-c", &cmd]).output();
+        Ok(format!("Permintaan perubahan profil kipas dikirim: {}", profile_str))
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        let _ = linux_prof;
+        let _ = pwr_guid;
+        let _ = mode_num;
+        Ok(format!("Thermal Mode diatur ke {}", mode_name))
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let sys = System::new();
@@ -878,7 +1043,9 @@ pub fn run() {
             is_window_maximized,
             close_window,
             get_installed_software,
-            uninstall_software
+            uninstall_software,
+            get_thermal_mode,
+            set_thermal_mode
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
