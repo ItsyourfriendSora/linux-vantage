@@ -96,10 +96,7 @@ export default function AntiVirus() {
   return (
     <div className="w-full h-full p-8 flex flex-col bg-[#000000] text-gray-300 overflow-y-auto">
       <div className="max-w-[1400px] mx-auto w-full">
-        <h1 className="text-2xl font-semibold text-white mb-2">Security at a glance</h1>
-        <p className="text-gray-400 text-sm mb-8">
-          See what's happening with the security and health of your device and take any actions needed.
-        </p>
+        <h1 className="text-2xl font-semibold text-white mb-8">Security at a glance</h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {cards.map((card, idx) => (
