@@ -61,16 +61,16 @@ export default function ListCard() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const lastSwitchTimeRef = useRef<number>(0);
 
-  // Poll current thermal mode from system periodically (every 3 seconds)
+  // Poll current thermal mode from system periodically (every 1 second for instant hotkey sync)
   useEffect(() => {
     let isMounted = true;
     const fetchCurrentMode = async () => {
-      // Do not overwrite UI if user recently switched within 8 seconds
-      if (Date.now() - lastSwitchTimeRef.current < 8000) return;
+      // Only buffer 1.2s if user clicked button in UI to avoid immediate flicker
+      if (Date.now() - lastSwitchTimeRef.current < 1200) return;
       try {
         const mode = await invoke<string>('get_thermal_mode');
         if (isMounted && (mode === 'Quiet' || mode === 'Balance' || mode === 'Performance')) {
-          setCurrentMode(mode);
+          setCurrentMode((prev) => (prev !== mode ? mode : prev));
         }
       } catch (err) {
         console.warn('Could not read thermal mode:', err);
@@ -78,7 +78,7 @@ export default function ListCard() {
     };
 
     fetchCurrentMode();
-    const interval = setInterval(fetchCurrentMode, 3000);
+    const interval = setInterval(fetchCurrentMode, 1000);
     return () => {
       isMounted = false;
       clearInterval(interval);

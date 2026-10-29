@@ -852,7 +852,52 @@ fn close_window(window: tauri::Window) -> Result<(), String> {
 fn get_thermal_mode() -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        // 1. Read directly from file (0ms, non-blocking)
+        // 1. Lenovo LOQ / Legion / IdeaPad Gaming hardware registry
+        // Directly updated in real-time by Lenovo Vantage / FnHotkeyUtility when Fn+Q is pressed! (~5ms, non-elevated)
+        if let Ok(output) = Command::new("reg")
+            .args(&[
+                "query",
+                r"HKLM\SOFTWARE\Lenovo\VantageService\AddinData\LenovoGamingAddin\Event\FanManagerPlugin\SmartFanModeEvent",
+                "/v",
+                "SmartFanMode",
+            ])
+            .output()
+        {
+            if output.status.success() {
+                let out_str = String::from_utf8_lossy(&output.stdout);
+                if out_str.contains("0x1") {
+                    return Ok("Quiet".to_string());
+                } else if out_str.contains("0x3") || out_str.contains("0x4") {
+                    return Ok("Performance".to_string());
+                } else if out_str.contains("0x2") {
+                    return Ok("Balance".to_string());
+                }
+            }
+        }
+
+        // 2. Also check Lenovo RealStatusEvent fallback
+        if let Ok(output) = Command::new("reg")
+            .args(&[
+                "query",
+                r"HKLM\SOFTWARE\Lenovo\VantageService\AddinData\LenovoGamingAddin\Event\FanManagerPlugin\RealStatusEvent",
+                "/v",
+                "SmartFanMode",
+            ])
+            .output()
+        {
+            if output.status.success() {
+                let out_str = String::from_utf8_lossy(&output.stdout);
+                if out_str.contains("0x1") {
+                    return Ok("Quiet".to_string());
+                } else if out_str.contains("0x3") || out_str.contains("0x4") {
+                    return Ok("Performance".to_string());
+                } else if out_str.contains("0x2") {
+                    return Ok("Balance".to_string());
+                }
+            }
+        }
+
+        // 3. Check thermal_current.txt if synced by background helper
         if let Ok(content) = std::fs::read_to_string("C:\\ProgramData\\Nexora\\thermal_current.txt") {
             let s = content.trim();
             if s == "1" || s.eq_ignore_ascii_case("quiet") {
@@ -864,14 +909,34 @@ fn get_thermal_mode() -> Result<String, String> {
             }
         }
 
-        // 2. Fallback to active power scheme (10ms, no powershell)
+        // 4. Universal Windows check for ASUS, HP, Dell, Acer, etc.
         if let Ok(output) = Command::new("powercfg").arg("/getactivescheme").output() {
-            let out_str = String::from_utf8_lossy(&output.stdout);
-            if out_str.contains("11e82a5f") || out_str.contains("High performance") || out_str.contains("8c5e7fda") {
+            let out_str = String::from_utf8_lossy(&output.stdout).to_lowercase();
+            if out_str.contains("11e82a5f") 
+                || out_str.contains("8c5e7fda") 
+                || out_str.contains("ded574b5")
+                || out_str.contains("high performance") 
+                || out_str.contains("ultimate performance")
+                || out_str.contains("performa") 
+                || out_str.contains("kinerja") 
+                || out_str.contains("turbo") 
+                || out_str.contains("extreme") {
                 return Ok("Performance".to_string());
-            } else if out_str.contains("9a195b1b") || out_str.contains("Power saver") || out_str.contains("a1841308") {
+            } else if out_str.contains("9a195b1b") 
+                || out_str.contains("a1841308") 
+                || out_str.contains("power saver") 
+                || out_str.contains("quiet") 
+                || out_str.contains("silent") 
+                || out_str.contains("eco") 
+                || out_str.contains("hemat") 
+                || out_str.contains("efficiency") {
                 return Ok("Quiet".to_string());
-            } else {
+            } else if out_str.contains("381b4222") 
+                || out_str.contains("balanced") 
+                || out_str.contains("balance") 
+                || out_str.contains("seimbang") 
+                || out_str.contains("standar") 
+                || out_str.contains("standard") {
                 return Ok("Balance".to_string());
             }
         }
@@ -953,19 +1018,21 @@ fn set_thermal_mode(mode: String) -> Result<String, String> {
                 }} catch {{}}
             }}
 
-            # 2. Try Scheduled Task
+            # 2. Try Scheduled Task (runs with SYSTEM privileges without prompt once configured)
             try {{
                 $taskRes = (schtasks /run /tn "NexoraThermalHelper" 2>&1 | Out-String)
-                if ($taskRes -match "SUCCESS") {{
+                if ($taskRes -match "SUCCESS" -or $LASTEXITCODE -eq 0) {{
                     exit 0
                 }}
             }} catch {{}}
 
-            # 3. Elevation fallback: launch WITHOUT -Wait so Tauri thread NEVER hangs
-            try {{
-                $inner = "`$m = $mode; try {{ `$gz = Get-WmiObject -Namespace root\WMI -Class LENOVO_GAMEZONE_DATA -ErrorAction Stop; `$gz.SetSmartFanMode([uint32]`$m) }} catch {{ `$gz = Get-CimInstance -Namespace root\wmi -ClassName LENOVO_GAMEZONE_DATA -ErrorAction Stop; Invoke-CimMethod -InputObject `$gz -MethodName SetSmartFanMode -Arguments @{{ Data = [uint32]`$m }} -ErrorAction Stop }}; try {{ `$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\ProgramData\Nexora\thermal_control.ps1 -Action set'; `$principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest; `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew; Register-ScheduledTask -TaskName 'NexoraThermalHelper' -Action `$action -Principal `$principal -Settings `$settings -Force }} catch {{}}"
-                Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"$inner`""
-            }} catch {{}}
+            # 3. Elevation setup fallback: only launch once to grant permanent permissions, never spam UAC
+            if (-not (Test-Path "C:\ProgramData\Nexora\helper_configured.txt")) {{
+                try {{
+                    $inner = "`$m = $mode; try {{ `$gz = Get-WmiObject -Namespace root\WMI -Class LENOVO_GAMEZONE_DATA -ErrorAction Stop; `$gz.SetSmartFanMode([uint32]`$m) }} catch {{ try {{ `$gz = Get-CimInstance -Namespace root\wmi -ClassName LENOVO_GAMEZONE_DATA -ErrorAction Stop; Invoke-CimMethod -InputObject `$gz -MethodName SetSmartFanMode -Arguments @{{ Data = [uint32]`$m }} -ErrorAction Stop }} catch {{}} }}; try {{ `$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File C:\ProgramData\Nexora\thermal_control.ps1 -Action set'; `$principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\SYSTEM' -LogonType ServiceAccount -RunLevel Highest; `$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew; Register-ScheduledTask -TaskName 'NexoraThermalHelper' -Action `$action -Principal `$principal -Settings `$settings -Force; `$scheduler = New-Object -ComObject 'Schedule.Service'; `$scheduler.Connect(); `$task = `$scheduler.GetFolder('\').GetTask('NexoraThermalHelper'); `$sddl = `$task.GetSecurityDescriptor(0xF); if (`$sddl -notmatch '\(A;;GRGX;;;AU\)') {{ `$task.SetSecurityDescriptor(`$sddl + '(A;;GRGX;;;AU)', 0) }}; icacls 'C:\Windows\System32\Tasks\NexoraThermalHelper' /grant '*S-1-5-32-545:(RX)' /grant '*S-1-5-11:(RX)' /c; Set-Content -Path 'C:\ProgramData\Nexora\helper_configured.txt' -Value '1' -Force }} catch {{}}"
+                    Start-Process powershell -Verb RunAs -WindowStyle Hidden -ArgumentList "-NoProfile -ExecutionPolicy Bypass -Command `"$inner`""
+                }} catch {{}}
+            }}
             "#,
             mode_num
         );
