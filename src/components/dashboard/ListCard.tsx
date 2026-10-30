@@ -65,12 +65,18 @@ export default function ListCard() {
   useEffect(() => {
     let isMounted = true;
     const fetchCurrentMode = async () => {
-      // Only buffer 1.2s if user clicked button in UI to avoid immediate flicker
-      if (Date.now() - lastSwitchTimeRef.current < 1200) return;
+      // Small buffer after button click to avoid flicker while task applies
+      if (Date.now() - lastSwitchTimeRef.current < 800) return;
       try {
         const mode = await invoke<string>('get_thermal_mode');
-        if (isMounted && (mode === 'Quiet' || mode === 'Balance' || mode === 'Performance')) {
-          setCurrentMode((prev) => (prev !== mode ? mode : prev));
+        if (isMounted && mode) {
+          const lower = mode.toLowerCase();
+          const parsedMode = lower.includes('quiet') || lower.includes('silent') || lower.includes('eco')
+            ? 'Quiet'
+            : lower.includes('perf') || lower.includes('turbo') || lower.includes('extreme')
+            ? 'Performance'
+            : 'Balance';
+          setCurrentMode((prev) => (prev !== parsedMode ? parsedMode : prev));
         }
       } catch (err) {
         console.warn('Could not read thermal mode:', err);

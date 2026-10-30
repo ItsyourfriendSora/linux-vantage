@@ -10,7 +10,7 @@ if (-not (Test-Path $dataPath)) {
 icacls $dataPath /grant "*S-1-5-32-545:(OI)(CI)(M)" /t /c
 icacls $dataPath /grant "*S-1-5-11:(OI)(CI)(M)" /t /c
 
-# 2. Write thermal_control.ps1
+# 2. Write thermal_control.ps1 (STRICTLY controls fan mode via WMI; NEVER touches powercfg or screen brightness!)
 $controlScript = @'
 param([string]$Action = "set", [string]$Mode = "")
 
@@ -52,15 +52,6 @@ function Set-ModeValue([uint32]$m) {
 if ($Action -eq "get" -or $Action -eq "sync") {
     $val = Get-ModeValue
     $val | Out-File -FilePath $currentFile -Encoding ascii -Force
-    if ($val -eq 1) {
-        powercfg /setactive 9a195b1b-4de2-4b9d-a7b7-309b39a85220 2>$null
-        powercfg /setactive a1841308-3541-4fab-bc81-f71556f20b4a 2>$null
-    } elseif ($val -eq 3) {
-        powercfg /setactive 11e82a5f-2c00-4e5e-b18c-4611bc268338 2>$null
-        powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>$null
-    } else {
-        powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e 2>$null
-    }
     Write-Output $val
     exit 0
 }
@@ -81,27 +72,20 @@ if ($Mode -eq "1" -or $Mode -eq "Quiet" -or $Mode -eq "quiet") {
 try {
     Set-ModeValue -m ([uint32]$modeNum)
     $modeNum | Out-File -FilePath $currentFile -Encoding ascii -Force
+    # Also update Lenovo Vantage registry key so all software agrees
+    try {
+        reg.exe add "HKLM\SOFTWARE\Lenovo\VantageService\AddinData\LenovoGamingAddin\Event\FanManagerPlugin\SmartFanModeEvent" /v SmartFanMode /t REG_DWORD /d $modeNum /f /reg:64 2>$null
+        reg.exe add "HKLM\SOFTWARE\Lenovo\VantageService\AddinData\LenovoGamingAddin\Event\FanManagerPlugin\RealStatusEvent" /v SmartFanMode /t REG_DWORD /d $modeNum /f /reg:64 2>$null
+    } catch {}
     Write-Output "SUCCESS:$modeNum"
 } catch {
     Write-Error $_.Exception.Message
     exit 1
 }
-
-try {
-    if ($modeNum -eq 1) {
-        powercfg /setactive 9a195b1b-4de2-4b9d-a7b7-309b39a85220 2>$null
-        powercfg /setactive a1841308-3541-4fab-bc81-f71556f20b4a 2>$null
-    } elseif ($modeNum -eq 3) {
-        powercfg /setactive 11e82a5f-2c00-4e5e-b18c-4611bc268338 2>$null
-        powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>$null
-    } else {
-        powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e 2>$null
-    }
-} catch {}
 '@
 Set-Content -Path "$dataPath\thermal_control.ps1" -Value $controlScript -Encoding UTF8 -Force
 
-# 3. Write thermal_watcher.ps1 with continuous 2-way hotkey sync
+# 3. Write thermal_watcher.ps1 with continuous 2-way hotkey sync (NO powercfg)
 $watcherScript = @'
 $dataPath = "C:\ProgramData\Nexora"
 $targetFile = "$dataPath\thermal_target.txt"
@@ -135,17 +119,9 @@ function Apply-FanMode([int]$modeNum) {
         } catch {}
     }
     $modeNum | Out-File -FilePath $currentFile -Encoding ascii -Force
-    # Synchronize power plan
     try {
-        if ($modeNum -eq 1) {
-            powercfg /setactive 9a195b1b-4de2-4b9d-a7b7-309b39a85220 2>$null
-            powercfg /setactive a1841308-3541-4fab-bc81-f71556f20b4a 2>$null
-        } elseif ($modeNum -eq 3) {
-            powercfg /setactive 11e82a5f-2c00-4e5e-b18c-4611bc268338 2>$null
-            powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>$null
-        } else {
-            powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e 2>$null
-        }
+        reg.exe add "HKLM\SOFTWARE\Lenovo\VantageService\AddinData\LenovoGamingAddin\Event\FanManagerPlugin\SmartFanModeEvent" /v SmartFanMode /t REG_DWORD /d $modeNum /f /reg:64 2>$null
+        reg.exe add "HKLM\SOFTWARE\Lenovo\VantageService\AddinData\LenovoGamingAddin\Event\FanManagerPlugin\RealStatusEvent" /v SmartFanMode /t REG_DWORD /d $modeNum /f /reg:64 2>$null
     } catch {}
 }
 
@@ -159,18 +135,6 @@ while ($true) {
         if ($hwMode -ne $lastKnownMode) {
             $lastKnownMode = $hwMode
             $hwMode | Out-File -FilePath $currentFile -Encoding ascii -Force
-            # Sync power scheme to match hardware hotkey
-            try {
-                if ($hwMode -eq 1) {
-                    powercfg /setactive 9a195b1b-4de2-4b9d-a7b7-309b39a85220 2>$null
-                    powercfg /setactive a1841308-3541-4fab-bc81-f71556f20b4a 2>$null
-                } elseif ($hwMode -eq 3) {
-                    powercfg /setactive 11e82a5f-2c00-4e5e-b18c-4611bc268338 2>$null
-                    powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c 2>$null
-                } else {
-                    powercfg /setactive 381b4222-f694-41f0-9685-ff5bb260df2e 2>$null
-                }
-            } catch {}
         }
     }
 
@@ -231,4 +195,4 @@ Register-ScheduledTask -TaskName 'NexoraThermalWatcher' -Action $watchAction -Tr
 Start-ScheduledTask -TaskName 'NexoraThermalWatcher' -ErrorAction SilentlyContinue
 
 Set-Content -Path "$dataPath\helper_configured.txt" -Value "1" -Force
-Write-Host "Nexora Thermal Helper and Watcher configured successfully!" -ForegroundColor Green
+Write-Host "Nexora Thermal Helper and Watcher configured successfully without altering screen brightness!" -ForegroundColor Green

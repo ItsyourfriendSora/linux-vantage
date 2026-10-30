@@ -1,4 +1,12 @@
+import { useState } from 'react';
+import VirusThreatProtection from './VirusThreatProtection';
+
 export default function AntiVirus() {
+  const [currentView, setCurrentView] = useState<'overview' | 'virus_threat'>('overview');
+
+  if (currentView === 'virus_threat') {
+    return <VirusThreatProtection onBack={() => setCurrentView('overview')} />;
+  }
   const cards = [
     {
       title: 'Virus & threat protection',
@@ -96,12 +104,17 @@ export default function AntiVirus() {
   return (
     <div className="w-full h-full p-8 flex flex-col bg-[#000000] text-gray-300 overflow-y-auto">
       <div className="max-w-[1400px] mx-auto w-full">
-        <h1 className="text-2xl font-semibold text-white mb-8">Security at a glance</h1>
+        <h1 className="text-2xl font-semibold text-white mb-8">Security</h1>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
           {cards.map((card, idx) => (
             <div 
               key={idx} 
+              onClick={() => {
+                if (card.title === 'Virus & threat protection') {
+                  setCurrentView('virus_threat');
+                }
+              }}
               className="bg-[#121212] rounded-lg p-6 shadow-sm border border-gray-900 flex flex-col justify-start min-h-[160px] cursor-pointer hover:bg-[#1a1a1a] transition-colors"
             >
               <div className="mb-4 relative w-fit">
