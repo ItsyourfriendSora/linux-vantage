@@ -462,6 +462,7 @@ pub struct InstalledSoftware {
     pub description: String,
 }
 
+#[allow(dead_code)]
 fn parse_size_str(s: &str) -> u64 {
     let parts: Vec<&str> = s.trim().split_whitespace().collect();
     if parts.is_empty() {

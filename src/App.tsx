@@ -108,7 +108,7 @@ function App() {
         <AppHistory />
       )}
 
-      {activeTab === 'AntiVirus' && (
+      {activeTab === 'Security' && (
         <AntiVirus />
       )}
 
@@ -121,7 +121,7 @@ function App() {
       )}
 
       {/* Placeholder for other tabs */}
-      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App History' && activeTab !== 'AntiVirus' && activeTab !== 'Backlight Keyboard' && activeTab !== 'Storage' && (
+      {activeTab !== 'Dashboard' && activeTab !== 'Processes' && activeTab !== 'Performance' && activeTab !== 'App History' && activeTab !== 'Security' && activeTab !== 'Backlight Keyboard' && activeTab !== 'Storage' && (
         <div className="p-8 w-full h-full flex items-center justify-center text-gray-500">
            {activeTab} content goes here...
         </div>
