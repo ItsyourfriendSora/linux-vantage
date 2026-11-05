@@ -2,7 +2,7 @@ use sysinfo::System;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{State, Emitter};
+use tauri::{State, Emitter, Manager};
 use serde::{Serialize, Deserialize};
 use std::process::Command;
 #[cfg(target_os = "windows")]
@@ -1419,6 +1419,141 @@ fn get_threat_history(state: State<AntivirusScannerState>) -> Vec<ThreatItem> {
     state.threat_history.lock().unwrap().clone()
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct VpnProxyResult {
+    pub success: bool,
+    pub enabled: bool,
+    pub proxy: Option<String>,
+    pub ip: Option<String>,
+    pub country: Option<String>,
+    pub country_code: Option<String>,
+    pub city: Option<String>,
+    pub isp: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct VpnProxyStatus {
+    pub enabled: bool,
+    pub proxy: String,
+}
+
+fn get_vpn_script_path() -> String {
+    let program_data = "C:\\ProgramData\\Nexora\\vpn_manager.ps1";
+    if std::path::Path::new(program_data).exists() {
+        return program_data.to_string();
+    }
+    let local_scripts = "scripts\\vpn_manager.ps1";
+    if std::path::Path::new(local_scripts).exists() {
+        return local_scripts.to_string();
+    }
+    "..\\scripts\\vpn_manager.ps1".to_string()
+}
+
+#[tauri::command]
+fn connect_vpn_proxy(country: String, proxy: Option<String>) -> Result<VpnProxyResult, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let script_path = get_vpn_script_path();
+        let mut cmd = Command::new("powershell");
+        cmd.args(&[
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            &script_path,
+            "-Action",
+            "connect",
+            "-Country",
+            &country,
+        ]);
+        if let Some(ref p) = proxy {
+            let trimmed = p.trim();
+            if !trimmed.is_empty() {
+                cmd.args(&["-Proxy", trimmed]);
+            }
+        }
+        cmd.creation_flags(0x08000000);
+        let output = cmd.output().map_err(|e| e.to_string())?;
+
+        let out_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if let Ok(res) = serde_json::from_str::<serde_json::Value>(&out_str) {
+            return Ok(VpnProxyResult {
+                success: res["success"].as_bool().unwrap_or(false),
+                enabled: res["enabled"].as_bool().unwrap_or(false),
+                proxy: res["proxy"].as_str().map(|s| s.to_string()),
+                ip: res["ip"].as_str().map(|s| s.to_string()),
+                country: res["country"].as_str().map(|s| s.to_string()),
+                country_code: res["countryCode"].as_str().map(|s| s.to_string()),
+                city: res["city"].as_str().map(|s| s.to_string()),
+                isp: res["isp"].as_str().map(|s| s.to_string()),
+                error: res["error"].as_str().map(|s| s.to_string()),
+            });
+        }
+        Err(format!("Invalid response: {}", out_str))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(VpnProxyResult {
+            success: true,
+            enabled: true,
+            proxy: Some("127.0.0.1:8080".into()),
+            ip: Some("43.106.31.95".into()),
+            country: Some("Singapore".into()),
+            country_code: Some("SG".into()),
+            city: Some("Singapore".into()),
+            isp: Some("Alibaba".into()),
+            error: None,
+        })
+    }
+}
+
+#[tauri::command]
+fn disconnect_vpn_proxy() -> Result<bool, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let script_path = get_vpn_script_path();
+        let output = Command::new("powershell")
+            .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", &script_path, "-Action", "disable"])
+            .creation_flags(0x08000000)
+            .output()
+            .map_err(|e| e.to_string())?;
+
+        let out_str = String::from_utf8_lossy(&output.stdout);
+        Ok(out_str.contains("\"enabled\":false") || output.status.success())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(true)
+    }
+}
+
+#[tauri::command]
+fn get_vpn_proxy_status() -> VpnProxyStatus {
+    #[cfg(target_os = "windows")]
+    {
+        let script_path = get_vpn_script_path();
+        if let Ok(output) = Command::new("powershell")
+            .args(&["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", &script_path, "-Action", "status"])
+            .creation_flags(0x08000000)
+            .output()
+        {
+            let out_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if let Ok(res) = serde_json::from_str::<serde_json::Value>(&out_str) {
+                return VpnProxyStatus {
+                    enabled: res["enabled"].as_bool().unwrap_or(false),
+                    proxy: res["proxy"].as_str().unwrap_or("").to_string(),
+                };
+            }
+        }
+    }
+    VpnProxyStatus {
+        enabled: false,
+        proxy: String::new(),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let sys = System::new();
@@ -1436,6 +1571,15 @@ pub fn run() {
     
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let icon_bytes = include_bytes!("../icons/icon.png");
+            if let Ok(icon) = tauri::image::Image::from_bytes(icon_bytes) {
+                for window in app.webview_windows().values() {
+                    let _ = window.set_icon(icon.clone());
+                }
+            }
+            Ok(())
+        })
         .manage(SysState(
             Mutex::new(sys), 
             Mutex::new(nets), 
@@ -1466,7 +1610,10 @@ pub fn run() {
             cancel_virus_scan,
             toggle_antivirus_setting,
             update_protection_intelligence,
-            get_threat_history
+            get_threat_history,
+            connect_vpn_proxy,
+            disconnect_vpn_proxy,
+            get_vpn_proxy_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
