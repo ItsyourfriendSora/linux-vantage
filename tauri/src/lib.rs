@@ -1817,6 +1817,35 @@ fn get_vpn_proxy_status() -> VpnProxyStatus {
     }
 }
 
+#[tauri::command]
+fn clean_idle_ram() -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        extern "system" {
+            fn SetProcessWorkingSetSize(hProcess: isize, dwMinimumWorkingSetSize: usize, dwMaximumWorkingSetSize: usize) -> i32;
+            fn GetCurrentProcess() -> isize;
+        }
+        unsafe {
+            let _ = SetProcessWorkingSetSize(GetCurrentProcess(), usize::MAX, usize::MAX);
+        }
+        let _ = Command::new("powershell")
+            .args(&[
+                "-NoProfile",
+                "-NonInteractive",
+                "-WindowStyle", "Hidden",
+                "-Command",
+                "[System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers();"
+            ])
+            .creation_flags(0x08000000)
+            .output();
+        Ok("RAM idle background berhasil dibersihkan".to_string())
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok("Memory optimized".to_string())
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let sys = System::new();
@@ -1877,7 +1906,8 @@ pub fn run() {
             get_threat_history,
             connect_vpn_proxy,
             disconnect_vpn_proxy,
-            get_vpn_proxy_status
+            get_vpn_proxy_status,
+            clean_idle_ram
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

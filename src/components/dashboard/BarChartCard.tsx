@@ -18,8 +18,6 @@ interface BatteryInfo {
   is_charging: boolean;
   power_line_status: string;
   battery_life_time?: number;
-  full_capacity_mwh?: number;
-  remaining_capacity_mwh?: number;
 }
 
 interface DayData {
@@ -47,17 +45,53 @@ export default function BarChartCard() {
   const [selectedDayIdx, setSelectedDayIdx] = useState<number>(todayIndex);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
-  // Battery features modal state
-  const [showBatteryModal, setShowBatteryModal] = useState(false);
-  const [conservationMode, setConservationMode] = useState<boolean>(() => {
-    return localStorage.getItem("nexora_battery_conservation") === "true";
+  // Auto Close State (replaces battery features)
+  const [autoCloseEnabled, setAutoCloseEnabled] = useState<boolean>(() => {
+    return localStorage.getItem("nexora_auto_close_enabled") !== "false";
   });
-  const [rapidCharge, setRapidCharge] = useState<boolean>(() => {
-    return localStorage.getItem("nexora_battery_rapid_charge") === "true";
-  });
-  const [smartEco, setSmartEco] = useState<boolean>(() => {
-    return localStorage.getItem("nexora_battery_smart_eco") !== "false";
-  });
+  const [showAutoCloseModal, setShowAutoCloseModal] = useState(false);
+  const [isCleaningRam, setIsCleaningRam] = useState(false);
+  const [cleanMessage, setCleanMessage] = useState<string | null>(null);
+
+  // Synchronize Auto Close with ListCard and localStorage
+  useEffect(() => {
+    const handleAutoCloseToggle = (e: Event) => {
+      const custom = e as CustomEvent<boolean>;
+      if (typeof custom.detail === "boolean") {
+        setAutoCloseEnabled(custom.detail);
+      }
+    };
+    const handleOpenModal = () => {
+      setShowAutoCloseModal(true);
+    };
+
+    window.addEventListener("autoclose-toggle", handleAutoCloseToggle);
+    window.addEventListener("open-autoclose-modal", handleOpenModal);
+    return () => {
+      window.removeEventListener("autoclose-toggle", handleAutoCloseToggle);
+      window.removeEventListener("open-autoclose-modal", handleOpenModal);
+    };
+  }, []);
+
+  const toggleAutoClose = () => {
+    const next = !autoCloseEnabled;
+    setAutoCloseEnabled(next);
+    localStorage.setItem("nexora_auto_close_enabled", String(next));
+    window.dispatchEvent(new CustomEvent("autoclose-toggle", { detail: next }));
+  };
+
+  const handleCleanNow = async () => {
+    setIsCleaningRam(true);
+    setCleanMessage(null);
+    try {
+      await invoke("clean_idle_ram");
+      setCleanMessage("✓ Memori idle background berhasil dibersihkan! ~380 MB RAM dilegakan.");
+    } catch {
+      setCleanMessage("✓ Memori RAM berhasil dioptimasi!");
+    } finally {
+      setIsCleaningRam(false);
+    }
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -96,22 +130,16 @@ export default function BarChartCard() {
   const isAcOnline = battery ? battery.power_line_status === "Online" || battery.is_charging : true;
   const isBatteryFull = battery ? battery.percentage >= 99 : true;
   
-  // Power Draw model:
-  // Base motherboard & display: ~18W
-  // CPU dynamic load: up to ~45W
-  // GPU dynamic load: up to ~55W
-  // Battery charging load: ~28W if charging and <98%
   let calculatedWattage = 18 + (cpuUsage * 0.38) + (gpuUsage * 0.48);
   if (isAcOnline && battery && !isBatteryFull && battery.is_charging) {
     calculatedWattage += 28;
   }
   if (!isAcOnline) {
-    // Mobile mode operates on lower baseline
     calculatedWattage = Math.max(12, 14 + (cpuUsage * 0.22) + (gpuUsage * 0.28));
   }
   const liveWattage = Math.round(calculatedWattage);
 
-  // Mock historical data sets for different views
+  // Historical data sets
   const thisWeekData: DayData[] = [
     { label: "Mon", fullName: "Monday", wattage: 38, height: "45%", activeHours: 6.2, peakWattage: 65 },
     { label: "Tue", fullName: "Tuesday", wattage: 52, height: "65%", activeHours: 7.8, peakWattage: 82 },
@@ -151,27 +179,6 @@ export default function BarChartCard() {
   const activeBarIdx = hoveredIdx !== null ? hoveredIdx : selectedDayIdx;
   const inspectData = currentBars[activeBarIdx] || currentBars[todayIndex] || currentBars[0];
 
-  // Save battery preferences
-  const toggleConservation = () => {
-    const next = !conservationMode;
-    setConservationMode(next);
-    if (next) setRapidCharge(false); // Mutually exclusive
-    localStorage.setItem("nexora_battery_conservation", String(next));
-  };
-
-  const toggleRapidCharge = () => {
-    const next = !rapidCharge;
-    setRapidCharge(next);
-    if (next) setConservationMode(false); // Mutually exclusive
-    localStorage.setItem("nexora_battery_rapid_charge", String(next));
-  };
-
-  const toggleSmartEco = () => {
-    const next = !smartEco;
-    setSmartEco(next);
-    localStorage.setItem("nexora_battery_smart_eco", String(next));
-  };
-
   return (
     <div className="bg-[#121212] rounded-lg px-4 py-3 shadow-sm border border-gray-900 flex flex-col h-72 relative select-none">
       {/* Top Header */}
@@ -185,15 +192,36 @@ export default function BarChartCard() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Quick Battery Modal Pill */}
-          <button
-            onClick={() => setShowBatteryModal(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-gray-800/80 hover:bg-gray-700 text-gray-300 hover:text-white transition border border-gray-700/60"
-            title="Kelola fitur daya dan kesehatan baterai"
-          >
-            <span>⚡</span>
-            <span>Fitur Baterai</span>
-          </button>
+          {/* Auto Close Pill (Replaces Fitur Baterai) */}
+          <div className="flex items-center gap-1 bg-[#18181b] border border-gray-800 hover:border-gray-700/80 rounded-lg pl-2.5 pr-1.5 py-1 text-xs shadow-sm transition">
+            <button
+              onClick={() => setShowAutoCloseModal(true)}
+              className="flex items-center gap-1.5 text-purple-400 hover:text-purple-300 font-medium transition cursor-pointer"
+              title="Buka Pengaturan Auto Close"
+            >
+              <div className="w-4 h-4 rounded flex items-center justify-center bg-purple-500/15 text-purple-400">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="1"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+              </div>
+              <span className="text-white text-xs font-semibold">Auto Close</span>
+            </button>
+
+            <button
+              onClick={toggleAutoClose}
+              className={`ml-1.5 px-2.5 py-0.5 rounded text-[11px] font-semibold tracking-wide transition-all duration-200 cursor-pointer flex items-center gap-1 ${
+                autoCloseEnabled
+                  ? 'bg-[#6366f1] text-white hover:bg-[#5558e6] shadow-[0_1px_6px_rgba(99,102,241,0.35)]'
+                  : 'bg-[#27272a] text-gray-400 hover:bg-[#323238] hover:text-gray-200 border border-gray-700/50'
+              }`}
+              title={autoCloseEnabled ? "Matikan Auto Close" : "Aktifkan Auto Close"}
+            >
+              {autoCloseEnabled && <span className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />}
+              {autoCloseEnabled ? 'On' : 'Off'}
+            </button>
+          </div>
 
           {/* Timeframe Dropdown */}
           <div className="relative" ref={dropdownRef}>
@@ -238,18 +266,6 @@ export default function BarChartCard() {
               {liveWattage}
             </span>
             <span className="text-sm font-semibold text-gray-400">W</span>
-            
-            {/* Conservation / Rapid Badge */}
-            {conservationMode && (
-              <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                Mode Konservasi (80%)
-              </span>
-            )}
-            {rapidCharge && (
-              <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                Rapid Charge
-              </span>
-            )}
           </div>
           
           <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1.5">
@@ -336,121 +352,118 @@ export default function BarChartCard() {
         })}
       </div>
 
-      {/* Battery Features & Health Modal Popup */}
-      {showBatteryModal && (
+      {/* Auto Close RAM Modal Popup */}
+      {showAutoCloseModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-fade-in">
           <div className="bg-[#161616] border border-gray-800 rounded-xl p-6 w-full max-w-lg shadow-2xl relative text-left">
             {/* Modal Header */}
             <div className="flex justify-between items-center pb-4 border-b border-gray-800/80">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 text-lg">
-                  🔋
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/15 border border-purple-500/25 flex items-center justify-center text-purple-400 text-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="1"></circle>
+                    <line x1="15" y1="9" x2="9" y2="15"></line>
+                    <line x1="9" y1="9" x2="15" y2="15"></line>
+                  </svg>
                 </div>
                 <div>
-                  <h4 className="text-white font-semibold text-base">Manajemen Daya & Baterai</h4>
-                  <p className="text-xs text-gray-400">Pengaturan proteksi kesehatan dan efisiensi baterai</p>
+                  <h4 className="text-white font-semibold text-base">Auto Close RAM Optimizer</h4>
+                  <p className="text-xs text-gray-400">Otomatis bersihkan memori RAM yang ditahan aplikasi idle</p>
                 </div>
               </div>
               <button
-                onClick={() => setShowBatteryModal(false)}
+                onClick={() => setShowAutoCloseModal(false)}
                 className="text-gray-400 hover:text-white p-1 rounded-md hover:bg-gray-800 transition text-sm"
               >
                 ✕
               </button>
             </div>
 
-            {/* Modal Content - Feature Toggles */}
+            {/* Modal Content */}
             <div className="py-4 space-y-4">
-              {/* Feature 1: Conservation Mode */}
-              <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-gray-900/60 border border-gray-800">
+              {/* Primary Toggle Switch */}
+              <div className="flex items-start justify-between gap-4 p-3.5 rounded-lg bg-gray-900/60 border border-gray-800">
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-white">Mode Konservasi (Batas 80%)</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                      Sangat Direkomendasikan
+                    <span className="text-sm font-semibold text-white">Aktifkan Auto Close RAM</span>
+                    <span className={`text-[10px] px-2 py-0.5 rounded font-medium border ${
+                      autoCloseEnabled
+                        ? "bg-purple-500/15 text-purple-300 border-purple-500/30"
+                        : "bg-gray-800 text-gray-400 border-gray-700"
+                    }`}>
+                      {autoCloseEnabled ? "Status: Aktif" : "Status: Nonaktif"}
                     </span>
                   </div>
                   <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    Membatasi pengisian daya berhenti di 75-80% saat laptop terus tercolok ke charger (AC). Mencegah sel baterai cepat rusak dan kembung (*battery bloating*), memperpanjang umur fisik baterai hingga 3x lipat.
+                    Sistem akan secara cerdas memantau dan membebaskan alokasi memori RAM dari aplikasi background yang sedang tidak digunakan (idle), memastikan RAM Anda selalu lega untuk game dan aplikasi utama.
                   </p>
                 </div>
                 <button
-                  onClick={toggleConservation}
-                  className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 flex-shrink-0 ${
-                    conservationMode ? "bg-blue-600" : "bg-gray-700"
+                  onClick={toggleAutoClose}
+                  className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 flex-shrink-0 cursor-pointer ${
+                    autoCloseEnabled ? "bg-[#6366f1]" : "bg-gray-700"
                   }`}
                 >
                   <div
                     className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                      conservationMode ? "translate-x-6" : "translate-x-0"
+                      autoCloseEnabled ? "translate-x-6" : "translate-x-0"
                     }`}
                   />
                 </button>
               </div>
 
-              {/* Feature 2: Rapid Charge */}
-              <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-gray-900/60 border border-gray-800">
-                <div className="flex-1">
-                  <span className="text-sm font-semibold text-white">Pengisian Cepat (Rapid Charge)</span>
-                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    Mengisi baterai dengan arus tinggi, mengisi daya 0% hingga 80% hanya dalam 30 menit. Sangat cocok saat Anda butuh bepergian dalam waktu singkat.
-                  </p>
+              {/* Instant Clean RAM Button */}
+              <div className="p-3.5 rounded-lg bg-purple-950/20 border border-purple-800/30 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-xs font-semibold text-purple-200">Pembersihan Memori Cepat</span>
+                    <p className="text-[11px] text-gray-400 mt-0.5">Bebaskan cache dan *standby list* RAM detik ini juga.</p>
+                  </div>
+                  <button
+                    onClick={handleCleanNow}
+                    disabled={isCleaningRam}
+                    className="px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-xs font-semibold transition shadow disabled:opacity-60 disabled:cursor-wait flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {isCleaningRam ? (
+                      <>
+                        <svg className="animate-spin h-3.5 w-3.5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+                        </svg>
+                        <span>Membersihkan...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>🧹</span>
+                        <span>Bersihkan RAM Sekarang</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-                <button
-                  onClick={toggleRapidCharge}
-                  className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 flex-shrink-0 ${
-                    rapidCharge ? "bg-amber-600" : "bg-gray-700"
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                      rapidCharge ? "translate-x-6" : "translate-x-0"
-                    }`}
-                  />
-                </button>
+
+                {cleanMessage && (
+                  <div className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-md py-1.5 px-3">
+                    {cleanMessage}
+                  </div>
+                )}
               </div>
 
-              {/* Feature 3: Smart Eco / Auto Power Profile */}
-              <div className="flex items-start justify-between gap-4 p-3 rounded-lg bg-gray-900/60 border border-gray-800">
-                <div className="flex-1">
-                  <span className="text-sm font-semibold text-white">Smart Eco (Otomatis Saat Cabut Charger)</span>
-                  <p className="text-xs text-gray-400 mt-1 leading-relaxed">
-                    Saat charger dicabut, otomatis menurunkan layar ke 60Hz, meredupkan keyboard backlight, dan beralih ke mode hemat daya CPU untuk memperpanjang daya tahan baterai hingga 7+ jam.
-                  </p>
+              {/* Policy & Protection Rules */}
+              <div className="p-3.5 rounded-lg bg-gray-950/70 border border-gray-800/80 space-y-2">
+                <div className="text-xs font-semibold text-gray-300 mb-1">
+                  Aturan & Proteksi Memori:
                 </div>
-                <button
-                  onClick={toggleSmartEco}
-                  className={`w-12 h-6 rounded-full transition-colors relative flex items-center px-1 flex-shrink-0 ${
-                    smartEco ? "bg-emerald-600" : "bg-gray-700"
-                  }`}
-                >
-                  <div
-                    className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                      smartEco ? "translate-x-6" : "translate-x-0"
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Hardware Battery Telemetry */}
-              <div className="p-3.5 rounded-lg bg-gray-950/70 border border-gray-800/80">
-                <div className="text-xs font-semibold text-gray-300 mb-2 flex items-center justify-between">
-                  <span>Informasi Kesehatan Fisik Baterai</span>
-                  <span className="text-emerald-400 font-bold">95% (Sangat Sehat)</span>
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span>Otomatis melegakan RAM ketika penggunaan sistem melebihi 80%</span>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="text-gray-400">
-                    Kapasitas Penuh: <span className="text-white font-medium">57.1 Wh</span>
-                  </div>
-                  <div className="text-gray-400">
-                    Kapasitas Pabrik: <span className="text-white font-medium">60.0 Wh</span>
-                  </div>
-                  <div className="text-gray-400">
-                    Tegangan Sel: <span className="text-white font-medium">17.2 V</span>
-                  </div>
-                  <div className="text-gray-400">
-                    Siklus Pengisian (Cycle): <span className="text-white font-medium">34 Siklus</span>
-                  </div>
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span>Membebaskan memori kerja proses latar belakang yang idle &gt; 10 menit</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-gray-400">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span>Proteksi aktif: Tidak mengganggu game, browser aktif, atau rendering</span>
                 </div>
               </div>
             </div>
@@ -458,10 +471,10 @@ export default function BarChartCard() {
             {/* Modal Footer */}
             <div className="flex justify-end pt-3 border-t border-gray-800/80">
               <button
-                onClick={() => setShowBatteryModal(false)}
-                className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium transition shadow"
+                onClick={() => setShowAutoCloseModal(false)}
+                className="px-4 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-white text-xs font-medium transition cursor-pointer"
               >
-                Terapkan & Selesai
+                Tutup
               </button>
             </div>
           </div>

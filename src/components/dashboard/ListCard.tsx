@@ -8,10 +8,20 @@ interface ControlItemProps {
   iconBg: string;
   hasSettings?: boolean;
   active?: boolean;
+  controlledIsOn?: boolean;
+  onToggle?: (val: boolean) => void;
+  onSettingsClick?: () => void;
 }
 
-function ControlItem({ label, subtitle, icon, iconBg, hasSettings, active }: ControlItemProps) {
-  const [isOn, setIsOn] = useState(active || false);
+function ControlItem({ label, subtitle, icon, iconBg, hasSettings, active, controlledIsOn, onToggle, onSettingsClick }: ControlItemProps) {
+  const [internalIsOn, setInternalIsOn] = useState(active || false);
+  const isOn = controlledIsOn !== undefined ? controlledIsOn : internalIsOn;
+
+  const handleToggle = () => {
+    const next = !isOn;
+    setInternalIsOn(next);
+    if (onToggle) onToggle(next);
+  };
 
   return (
     <div className="bg-[#18181b]/80 hover:bg-[#1f1f23] border border-gray-800/80 hover:border-gray-700/80 rounded-lg py-3 px-4 flex items-center justify-between transition-all duration-200 group shadow-sm">
@@ -30,6 +40,7 @@ function ControlItem({ label, subtitle, icon, iconBg, hasSettings, active }: Con
           <button 
             type="button" 
             title={`Settings for ${label}`}
+            onClick={onSettingsClick}
             className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors cursor-pointer"
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -40,7 +51,7 @@ function ControlItem({ label, subtitle, icon, iconBg, hasSettings, active }: Con
         )}
         <button 
           type="button"
-          onClick={() => setIsOn(!isOn)}
+          onClick={handleToggle}
           className={`px-4 py-1.5 rounded-lg text-xs font-semibold tracking-wide transition-all duration-200 active:scale-95 cursor-pointer flex items-center gap-1.5 shadow-sm ${
             isOn 
               ? 'bg-[#6366f1] text-white hover:bg-[#5558e6] shadow-[0_2px_8px_rgba(99,102,241,0.35)]' 
@@ -60,6 +71,28 @@ export default function ListCard() {
   const [currentMode, setCurrentMode] = useState<'Quiet' | 'Balance' | 'Performance'>('Balance');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const lastSwitchTimeRef = useRef<number>(0);
+
+  // Auto Close State sync
+  const [autoCloseOn, setAutoCloseOn] = useState<boolean>(() => {
+    return localStorage.getItem("nexora_auto_close_enabled") !== "false";
+  });
+
+  useEffect(() => {
+    const handleSync = (e: Event) => {
+      const custom = e as CustomEvent<boolean>;
+      if (typeof custom.detail === "boolean") {
+        setAutoCloseOn(custom.detail);
+      }
+    };
+    window.addEventListener("autoclose-toggle", handleSync);
+    return () => window.removeEventListener("autoclose-toggle", handleSync);
+  }, []);
+
+  const handleToggleAutoClose = (next: boolean) => {
+    setAutoCloseOn(next);
+    localStorage.setItem("nexora_auto_close_enabled", String(next));
+    window.dispatchEvent(new CustomEvent("autoclose-toggle", { detail: next }));
+  };
 
   // Poll current thermal mode from system periodically (every 1 second for instant hotkey sync)
   useEffect(() => {
@@ -206,6 +239,9 @@ export default function ListCard() {
           subtitle="Free idle background RAM"
           hasSettings={true}
           active={true}
+          controlledIsOn={autoCloseOn}
+          onToggle={handleToggleAutoClose}
+          onSettingsClick={() => window.dispatchEvent(new CustomEvent("open-autoclose-modal"))}
           iconBg="bg-purple-500/15 text-purple-400"
           icon={
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
