@@ -77,11 +77,6 @@ export default function LineChartCard({ data }: LineChartCardProps) {
           <span className="text-2xl font-bold text-white tracking-tight leading-none">
             {activeTemp.toFixed(1)}°C
           </span>
-          <span className={`text-[11px] font-medium mt-1.5 h-4 transition-colors ${
-            hoverIdx !== null ? 'text-blue-400' : 'text-gray-500'
-          }`}>
-            {hoverIdx !== null ? 'History checkpoint' : 'Live reading'}
-          </span>
         </div>
       </div>
       

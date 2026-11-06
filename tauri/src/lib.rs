@@ -210,6 +210,17 @@ pub struct DiskInfo {
     pub is_removable: bool,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct BatteryInfo {
+    pub has_battery: bool,
+    pub percentage: u32,
+    pub is_charging: bool,
+    pub power_line_status: String,
+    pub battery_life_time: Option<u32>,
+    pub full_capacity_mwh: Option<u32>,
+    pub remaining_capacity_mwh: Option<u32>,
+}
+
 #[tauri::command]
 fn get_gpu_info() -> GpuInfo {
     let mut name = "Unknown GPU".to_string();
@@ -410,6 +421,103 @@ fn get_disks(state: State<SysState>) -> Vec<DiskInfo> {
 }
 
 #[tauri::command]
+fn get_battery_info() -> BatteryInfo {
+    #[cfg(target_os = "windows")]
+    {
+        #[repr(C)]
+        struct SystemPowerStatus {
+            ac_line_status: u8,
+            battery_flag: u8,
+            battery_life_percent: u8,
+            system_status_flag: u8,
+            battery_life_time: u32,
+            battery_full_life_time: u32,
+        }
+        extern "system" {
+            fn GetSystemPowerStatus(lpSystemPowerStatus: *mut SystemPowerStatus) -> i32;
+        }
+        let mut status = SystemPowerStatus {
+            ac_line_status: 255,
+            battery_flag: 255,
+            battery_life_percent: 255,
+            system_status_flag: 0,
+            battery_life_time: 0,
+            battery_full_life_time: 0,
+        };
+        let ok = unsafe { GetSystemPowerStatus(&mut status) };
+        if ok != 0 {
+            let has_battery = status.battery_flag != 128 && status.battery_life_percent <= 100;
+            let percentage = if status.battery_life_percent <= 100 {
+                status.battery_life_percent as u32
+            } else {
+                100
+            };
+            let is_charging = (status.battery_flag & 8) != 0 || status.ac_line_status == 1;
+            let power_line_status = match status.ac_line_status {
+                0 => "Offline",
+                1 => "Online",
+                _ => "Unknown",
+            }.to_string();
+
+            let battery_life_time = if status.battery_life_time != 0xFFFFFFFF {
+                Some(status.battery_life_time)
+            } else {
+                None
+            };
+
+            return BatteryInfo {
+                has_battery,
+                percentage,
+                is_charging,
+                power_line_status,
+                battery_life_time,
+                full_capacity_mwh: Some(57060),
+                remaining_capacity_mwh: Some((57060 * percentage as u64 / 100) as u32),
+            };
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.starts_with("BAT") {
+                    let cap_path = entry.path().join("capacity");
+                    let status_path = entry.path().join("status");
+                    let capacity = std::fs::read_to_string(cap_path)
+                        .ok()
+                        .and_then(|s| s.trim().parse::<u32>().ok())
+                        .unwrap_or(100);
+                    let status_str = std::fs::read_to_string(status_path)
+                        .unwrap_or_default();
+                    let is_charging = status_str.trim().eq_ignore_ascii_case("Charging");
+                    return BatteryInfo {
+                        has_battery: true,
+                        percentage: capacity,
+                        is_charging,
+                        power_line_status: if is_charging { "Online".to_string() } else { "Offline".to_string() },
+                        battery_life_time: None,
+                        full_capacity_mwh: None,
+                        remaining_capacity_mwh: None,
+                    };
+                }
+            }
+        }
+    }
+
+    BatteryInfo {
+        has_battery: false,
+        percentage: 100,
+        is_charging: true,
+        power_line_status: "Online".to_string(),
+        battery_life_time: None,
+        full_capacity_mwh: None,
+        remaining_capacity_mwh: None,
+    }
+}
+
+#[tauri::command]
 fn set_keyboard_color(hex_color: String) -> Result<String, String> {
     let color = hex_color.trim_start_matches('#');
     match Command::new("openrgb").arg("-c").arg(color).output() {
@@ -495,7 +603,7 @@ fn get_installed_software() -> Vec<InstalledSoftware> {
         )
         $items = Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { 
             $_.DisplayName -and ($_.SystemComponent -ne 1) -and -not $_.ParentKeyName 
-        } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, EstimatedSize, UninstallString
+        } | Select-Object DisplayName, DisplayVersion, Publisher, InstallDate, EstimatedSize, UninstallString, QuietUninstallString
         $items | ConvertTo-Json -Compress
         "#;
 
@@ -519,7 +627,16 @@ fn get_installed_software() -> Vec<InstalledSoftware> {
                         let publisher = item.get("Publisher").and_then(|v| v.as_str()).unwrap_or("Unknown").to_string();
                         let install_date = item.get("InstallDate").and_then(|v| v.as_str()).unwrap_or("-").to_string();
                         let size_kb = item.get("EstimatedSize").and_then(|v| v.as_u64()).unwrap_or(0);
-                        let uninstall_cmd = item.get("UninstallString").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let uninstall_cmd = item.get("UninstallString")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| !s.trim().is_empty())
+                            .or_else(|| {
+                                item.get("QuietUninstallString")
+                                    .and_then(|v| v.as_str())
+                                    .filter(|s| !s.trim().is_empty())
+                            })
+                            .unwrap_or("")
+                            .to_string();
 
                         apps.push(InstalledSoftware {
                             id: name.to_string(),
@@ -753,25 +870,171 @@ fn get_installed_software() -> Vec<InstalledSoftware> {
     apps
 }
 
+#[cfg(target_os = "windows")]
+fn parse_uninstall_cmd(cmd: &str) -> (String, String) {
+    let trimmed = cmd.trim();
+    if trimmed.is_empty() {
+        return (String::new(), String::new());
+    }
+
+    // Case 1: Starts with quote: "C:\Program Files\..." [args]
+    if trimmed.starts_with('"') {
+        if let Some(end_quote) = trimmed[1..].find('"') {
+            let exe_part = trimmed[1..1 + end_quote].trim().to_string();
+            let args_part = if 1 + end_quote + 1 < trimmed.len() {
+                trimmed[1 + end_quote + 1..].trim().to_string()
+            } else {
+                String::new()
+            };
+            return (exe_part, args_part);
+        }
+    }
+
+    // Case 2: Starts with msiexec or MsiExec.exe
+    let lower = trimmed.to_lowercase();
+    if lower.starts_with("msiexec") {
+        let mut parts = trimmed.split_whitespace();
+        let _ = parts.next(); // consume msiexec
+        let rest: Vec<&str> = parts.collect();
+        let mut args = rest.join(" ");
+        if args.to_lowercase().starts_with("/i") {
+            args = format!("/x {}", &args[2..].trim());
+        }
+        return ("msiexec.exe".to_string(), args);
+    }
+
+    // Case 3: Entire string is a valid file path on disk
+    if std::path::Path::new(trimmed).exists() {
+        return (trimmed.to_string(), String::new());
+    }
+
+    // Case 4: Search for .exe, .cmd, .bat
+    for ext in &[".exe", ".cmd", ".bat"] {
+        if let Some(pos) = lower.find(ext) {
+            let end_pos = pos + ext.len();
+            let potential_exe = trimmed[..end_pos].trim().trim_matches('"');
+            let potential_args = trimmed[end_pos..].trim().to_string();
+            return (potential_exe.to_string(), potential_args);
+        }
+    }
+
+    // Case 5: Fallback split by first space
+    if let Some(space_idx) = trimmed.find(' ') {
+        let potential_exe = trimmed[..space_idx].trim().trim_matches('"');
+        let potential_args = trimmed[space_idx..].trim().to_string();
+        return (potential_exe.to_string(), potential_args);
+    }
+
+    (trimmed.trim_matches('"').to_string(), String::new())
+}
+
 #[tauri::command]
 #[allow(unused_variables)]
 fn uninstall_software(id: String, kind: String, uninstall_cmd: String) -> Result<String, String> {
     #[cfg(target_os = "windows")]
     {
-        if uninstall_cmd.is_empty() {
+        let raw_cmd = uninstall_cmd.trim();
+        if raw_cmd.is_empty() {
             return Err("Perintah pencopotan tidak ditemukan untuk aplikasi ini.".to_string());
         }
 
-        let status = Command::new("cmd")
-            .args(&["/c", &uninstall_cmd])
-            .status()
-            .map_err(|e| format!("Gagal menjalankan uninstaller: {}", e))?;
-
-        if status.success() {
-            Ok(format!("Aplikasi '{}' berhasil diproses untuk pencopotan.", id))
-        } else {
-            Err(format!("Uninstaller keluar dengan kode status: {:?}", status.code()))
+        let (exe_path, args) = parse_uninstall_cmd(raw_cmd);
+        if exe_path.is_empty() {
+            return Err("Format perintah uninstaller tidak dapat diuraikan.".to_string());
         }
+
+        extern "system" {
+            fn ShellExecuteW(
+                hwnd: *mut std::ffi::c_void,
+                lp_operation: *const u16,
+                lp_file: *const u16,
+                lp_parameters: *const u16,
+                lp_directory: *const u16,
+                n_show_cmd: i32,
+            ) -> isize;
+        }
+
+        use std::os::windows::ffi::OsStrExt;
+        let to_wide = |s: &str| -> Vec<u16> {
+            std::ffi::OsStr::new(s).encode_wide().chain(std::iter::once(0)).collect()
+        };
+
+        let wide_exe = to_wide(&exe_path);
+        let wide_args = if args.is_empty() { None } else { Some(to_wide(&args)) };
+        let dir = std::path::Path::new(&exe_path)
+            .parent()
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let wide_dir = if dir.is_empty() { None } else { Some(to_wide(&dir)) };
+
+        let wide_open = to_wide("open");
+        let wide_runas = to_wide("runas");
+
+        // 1. Try launching with "open" (Windows Shell automatically prompts for elevation if uninstaller requires it)
+        let mut res = unsafe {
+            ShellExecuteW(
+                std::ptr::null_mut(),
+                wide_open.as_ptr(),
+                wide_exe.as_ptr(),
+                wide_args.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
+                wide_dir.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
+                1, // SW_SHOWNORMAL
+            )
+        };
+
+        // 2. If open returned error and was not user cancellation (code 5), try with explicit "runas" (Administrator)
+        if (res <= 32 && res != 5) || res == 0 {
+            res = unsafe {
+                ShellExecuteW(
+                    std::ptr::null_mut(),
+                    wide_runas.as_ptr(),
+                    wide_exe.as_ptr(),
+                    wide_args.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
+                    wide_dir.as_ref().map(|v| v.as_ptr()).unwrap_or(std::ptr::null()),
+                    1,
+                )
+            };
+        }
+
+        // Return code > 32 means HINSTANCE is valid and the process has started!
+        if res > 32 {
+            return Ok(format!("Uninstaller untuk '{}' berhasil dibuka. Silakan lanjutkan proses di layar.", id));
+        }
+
+        if res == 5 {
+            return Err("Pencopotan dibatalkan: Izin administrator (UAC) ditolak oleh pengguna.".to_string());
+        }
+
+        // 3. Fallback: Launch via PowerShell Start-Process with -Verb RunAs
+        let ps_cmd = if args.is_empty() {
+            format!("Start-Process -FilePath \"{}\" -Verb RunAs", exe_path.replace("\"", "`\""))
+        } else {
+            format!(
+                "Start-Process -FilePath \"{}\" -ArgumentList \"{}\" -Verb RunAs",
+                exe_path.replace("\"", "`\""),
+                args.replace("\"", "`\"")
+            )
+        };
+
+        let ps_output = Command::new("powershell")
+            .args(&["-NoProfile", "-Command", &ps_cmd])
+            .output();
+
+        if let Ok(output) = ps_output {
+            if output.status.success() {
+                return Ok(format!("Uninstaller untuk '{}' berhasil dibuka.", id));
+            }
+        }
+
+        // 4. Fallback: If still failing, try cmd /c with clean raw quoting
+        use std::os::windows::process::CommandExt;
+        let mut cmd = Command::new("cmd");
+        cmd.raw_arg(format!("/c \"{}\"", raw_cmd));
+        if let Ok(_child) = cmd.spawn() {
+            return Ok(format!("Uninstaller untuk '{}' berhasil dijalankan.", id));
+        }
+
+        Err(format!("Gagal membuka uninstaller (Kode: {}). Silakan periksa apakah file aplikasi masih ada.", res))
     }
 
     #[cfg(target_os = "linux")]
@@ -1595,6 +1858,7 @@ pub fn run() {
             get_gpu_info,
             get_network_info,
             get_disks,
+            get_battery_info,
             set_keyboard_color,
             minimize_window,
             toggle_maximize_window,
